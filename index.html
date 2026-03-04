@@ -133,7 +133,9 @@
       font-size: 0.75em;
       max-height: 120px;
       overflow-y: auto;
+      overflow-x: hidden;
       word-break: break-all;
+      overflow-wrap: anywhere;
       margin-top: 6px;
     }
     .hex { color: #ffab40; }
@@ -236,15 +238,18 @@
       font-size: 0.7em;
       margin-top: 6px;
     }
+    .symbol-table.cols-8 { grid-template-columns: repeat(8, 1fr); }
     .symbol-entry {
       background: #1a1a3a;
       padding: 2px 6px;
       border-radius: 2px;
       display: flex;
       justify-content: space-between;
+      overflow: hidden;
+      min-width: 0;
     }
-    .symbol-entry .sym-val { color: #76ff03; }
-    .symbol-entry .sym-freq { color: #ffab40; }
+    .symbol-entry .sym-val { color: #76ff03; overflow: hidden; text-overflow: ellipsis; }
+    .symbol-entry .sym-freq { color: #ffab40; white-space: nowrap; }
 
     .mode-desc {
       font-size: 0.75em;
@@ -257,7 +262,8 @@
 
     @media (max-width: 600px) {
       .settings-grid { grid-template-columns: 1fr; }
-      .symbol-table { grid-template-columns: repeat(2, 1fr); }
+      .symbol-table, .symbol-table.cols-8 { grid-template-columns: repeat(2, 1fr); }
+      .data-display { font-size: 0.65em; }
     }
   </style>
 </head>
@@ -288,7 +294,7 @@
         <button class="mode-btn active" data-mode="fsk4">4bit (16-FSK)</button>
         <button class="mode-btn" data-mode="fsk8">8bit (256-FSK)</button>
         <button class="mode-btn" data-mode="fsk16">16bit (65536-FSK)</button>
-        <button class="mode-btn" data-mode="morse">モールス信号</button>
+        <button class="mode-btn" data-mode="morse">モールス信号（英数字のみ）</button>
       </div>
       <div class="mode-desc" id="mode-desc">16-FSK: 1シンボル=4bit、16段階の周波数で符号化。安定性と速度のバランス良し。</div>
     </div>
@@ -401,7 +407,7 @@
       fsk4:  { bits: 4,  symbols: 16,    label: '16-FSK (4bit)',    desc: '16-FSK: 1シンボル=4bit、16段階の周波数。安定性と速度のバランス良し。' },
       fsk8:  { bits: 8,  symbols: 256,   label: '256-FSK (8bit)',   desc: '256-FSK: 1シンボル=8bit、256段階の周波数。高速だが環境依存。' },
       fsk16: { bits: 16, symbols: 65536, label: '65536-FSK (16bit)', desc: '65536-FSK: 1シンボル=16bit、65536段階の周波数。超高速だが実用性は限定的。' },
-      morse: { bits: 0,  symbols: 0,     label: 'モールス信号',      desc: 'モールス信号: 短点(・)と長点(-)で文字を符号化。古典的な通信方式。' },
+      morse: { bits: 0,  symbols: 0,     label: 'モールス信号',      desc: 'モールス信号: 短点(・)と長点(-)で文字を符号化。古典的な通信方式。※英数字(A-Z, 0-9)と一部記号のみ対応。日本語は変換できません。' },
     };
 
     // =========================================================================
@@ -493,7 +499,7 @@
 
       if (currentMode === 'morse') {
         symbolTableLabel.textContent = 'モールス信号テーブル (抜粋)';
-        table.style.gridTemplateColumns = 'repeat(4, 1fr)';
+        table.className = 'symbol-table';
         const show = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
         for (const ch of show) {
           const div = document.createElement('div');
@@ -511,7 +517,7 @@
       // For large tables, show only a subset
       const maxShow = Math.min(numSymbols, 32);
       const cols = numSymbols <= 16 ? 4 : numSymbols <= 256 ? 8 : 4;
-      table.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+      table.className = 'symbol-table' + (cols === 8 ? ' cols-8' : '');
 
       for (let i = 0; i < maxShow; i++) {
         const freq = config.baseFreq + i * config.freqStep;
@@ -670,10 +676,11 @@
       const morseSource = textToMorseSource(text);
       const morseSequence = [];
       let morseDisplay = '';
+      let skippedCount = 0;
 
       for (const ch of morseSource) {
         const code = charToMorse(ch);
-        if (code === null) continue; // skip unknown
+        if (code === null) { skippedCount++; continue; }
         if (code === ' ') {
           morseSequence.push({ type: 'word-gap' });
           morseDisplay += ' <span style="color:#666">/</span> ';
@@ -686,7 +693,18 @@
         }
       }
 
-      dispFrame.innerHTML = '<span class="frame-info">モールス信号（フレーム不使用）</span>';
+      if (morseSequence.length === 0) {
+        dispFrame.innerHTML = '<span class="frame-info" style="color:#e63946;">⚠ モールス信号に変換可能な文字がありません。英数字(A-Z, 0-9)と一部記号のみ対応しています。</span>';
+        dispSymbols.innerHTML = '';
+        return new Float32Array(0);
+      }
+
+      let skipNote = '';
+      if (skippedCount > 0) {
+        skipNote = `  <span style="color:#e63946;">(${skippedCount}文字スキップ: 非対応文字)</span>`;
+      }
+
+      dispFrame.innerHTML = '<span class="frame-info">モールス信号（フレーム不使用）</span>' + skipNote;
       dispSymbols.innerHTML = morseDisplay;
 
       // Generate audio
