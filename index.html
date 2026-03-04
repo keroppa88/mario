@@ -294,7 +294,7 @@
         <button class="mode-btn active" data-mode="fsk4">4bit (16-FSK)</button>
         <button class="mode-btn" data-mode="fsk8">8bit (256-FSK)</button>
         <button class="mode-btn" data-mode="fsk16">16bit (65536-FSK)</button>
-        <button class="mode-btn" data-mode="morse">モールス信号</button>
+        <button class="mode-btn" data-mode="morse">モールス信号（英数字のみ）</button>
       </div>
       <div class="mode-desc" id="mode-desc">16-FSK: 1シンボル=4bit、16段階の周波数で符号化。安定性と速度のバランス良し。</div>
     </div>
@@ -407,7 +407,7 @@
       fsk4:  { bits: 4,  symbols: 16,    label: '16-FSK (4bit)',    desc: '16-FSK: 1シンボル=4bit、16段階の周波数。安定性と速度のバランス良し。' },
       fsk8:  { bits: 8,  symbols: 256,   label: '256-FSK (8bit)',   desc: '256-FSK: 1シンボル=8bit、256段階の周波数。高速だが環境依存。' },
       fsk16: { bits: 16, symbols: 65536, label: '65536-FSK (16bit)', desc: '65536-FSK: 1シンボル=16bit、65536段階の周波数。超高速だが実用性は限定的。' },
-      morse: { bits: 0,  symbols: 0,     label: 'モールス信号',      desc: 'モールス信号: 短点(・)と長点(-)で文字を符号化。古典的な通信方式。' },
+      morse: { bits: 0,  symbols: 0,     label: 'モールス信号',      desc: 'モールス信号: 短点(・)と長点(-)で文字を符号化。古典的な通信方式。※英数字(A-Z, 0-9)と一部記号のみ対応。日本語は変換できません。' },
     };
 
     // =========================================================================
