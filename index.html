@@ -3,650 +3,741 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Super Mario Bros. - Browser NES Emulator</title>
+  <title>テキスト→音声変調 (16-FSK / 4bit)</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
     body {
-      background: #111;
-      color: #ccc;
+      background: #0a0a1a;
+      color: #d0d0e0;
       font-family: 'Courier New', monospace;
       display: flex;
       flex-direction: column;
       align-items: center;
       min-height: 100vh;
       padding: 20px;
-      user-select: none;
     }
-
     h1 {
-      color: #e63946;
-      font-size: 1.6em;
-      margin-bottom: 12px;
-      text-shadow: 2px 2px 0 #000;
-      letter-spacing: 2px;
+      color: #00e5ff;
+      font-size: 1.4em;
+      margin-bottom: 6px;
+      text-shadow: 0 0 10px rgba(0,229,255,0.4);
     }
-
-    #screen-container {
-      position: relative;
-      border: 4px solid #333;
-      border-radius: 4px;
-      background: #000;
-      line-height: 0;
-    }
-
-    #nes-screen {
-      width: 512px;
-      height: 480px;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
-      background: #000;
-    }
-
-    .overlay {
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0, 0, 0, 0.85);
-      color: #fff;
-      font-size: 1em;
-      text-align: center;
-      padding: 30px;
-      cursor: pointer;
-    }
-
-    .overlay p { margin: 8px 0; }
-    .overlay .hint { color: #888; font-size: 0.85em; }
-
-    .btn {
-      display: inline-block;
-      background: #e63946;
-      color: #fff;
-      border: none;
-      padding: 10px 24px;
-      font-size: 1em;
-      font-family: inherit;
-      cursor: pointer;
-      border-radius: 4px;
-      margin-top: 10px;
-    }
-    .btn:hover { background: #c62828; }
-
-    #rom-input { display: none; }
-
-    #status-bar {
-      margin-top: 8px;
-      font-size: 0.85em;
+    .subtitle {
       color: #666;
-      text-align: center;
+      font-size: 0.8em;
+      margin-bottom: 16px;
     }
-
-    #gamepad-status {
-      color: #4caf50;
-      font-size: 0.85em;
-      margin-top: 4px;
+    .container {
+      max-width: 800px;
+      width: 100%;
     }
-
-    .toolbar {
-      margin-top: 8px;
+    .panel {
+      background: #12122a;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .panel h2 {
+      color: #00e5ff;
+      font-size: 1em;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #2a2a4a;
+      padding-bottom: 6px;
+    }
+    label {
+      display: block;
+      color: #888;
+      font-size: 0.8em;
+      margin-bottom: 4px;
+    }
+    textarea {
+      width: 100%;
+      height: 80px;
+      background: #0a0a1a;
+      color: #e0e0e0;
+      border: 1px solid #3a3a5a;
+      border-radius: 4px;
+      padding: 8px;
+      font-family: inherit;
+      font-size: 0.9em;
+      resize: vertical;
+    }
+    textarea:focus { outline: none; border-color: #00e5ff; }
+    .btn-row {
       display: flex;
       gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
     }
-    .toolbar button {
-      background: #333;
-      color: #ccc;
-      border: 1px solid #555;
-      padding: 6px 14px;
+    button {
+      background: #00e5ff;
+      color: #000;
+      border: none;
+      padding: 8px 18px;
       font-family: inherit;
       font-size: 0.85em;
+      font-weight: bold;
       cursor: pointer;
-      border-radius: 3px;
+      border-radius: 4px;
+      transition: background 0.2s;
     }
-    .toolbar button:hover { background: #444; }
-    .toolbar button.active { background: #e63946; border-color: #e63946; color: #fff; }
+    button:hover { background: #00b8d4; }
+    button:disabled { background: #333; color: #666; cursor: default; }
+    button.secondary {
+      background: #2a2a4a;
+      color: #aaa;
+    }
+    button.secondary:hover { background: #3a3a5a; }
+    button.stop { background: #e63946; color: #fff; }
+    button.stop:hover { background: #c62828; }
+    .file-input-wrapper {
+      display: inline-block;
+    }
+    .file-input-wrapper input[type="file"] { display: none; }
 
-    .info-section {
-      margin-top: 20px;
-      max-width: 520px;
+    /* Pipeline visualization */
+    .pipeline {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin: 10px 0;
+      font-size: 0.75em;
+    }
+    .pipe-step {
+      background: #1a1a3a;
+      border: 1px solid #3a3a5a;
+      border-radius: 4px;
+      padding: 4px 8px;
+      color: #888;
+      transition: all 0.3s;
+    }
+    .pipe-step.active {
+      border-color: #00e5ff;
+      color: #00e5ff;
+      box-shadow: 0 0 6px rgba(0,229,255,0.3);
+    }
+    .pipe-step.done {
+      border-color: #4caf50;
+      color: #4caf50;
+    }
+    .pipe-arrow { color: #444; }
+
+    /* Data display */
+    .data-display {
+      background: #0a0a1a;
+      border: 1px solid #2a2a4a;
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 0.75em;
+      max-height: 120px;
+      overflow-y: auto;
+      word-break: break-all;
+      margin-top: 6px;
+    }
+    .hex { color: #ffab40; }
+    .bits { color: #76ff03; }
+    .frame-info { color: #e040fb; }
+    .freq-info { color: #00e5ff; }
+
+    /* Waveform canvas */
+    #waveform {
       width: 100%;
+      height: 100px;
+      background: #0a0a1a;
+      border: 1px solid #2a2a4a;
+      border-radius: 4px;
     }
 
-    .info-section h3 {
-      color: #e63946;
-      font-size: 1em;
-      margin-bottom: 6px;
-      margin-top: 14px;
-    }
-
-    table.key-map {
+    /* Spectrum display */
+    #spectrum {
       width: 100%;
-      border-collapse: collapse;
+      height: 80px;
+      background: #0a0a1a;
+      border: 1px solid #2a2a4a;
+      border-radius: 4px;
+      margin-top: 6px;
+    }
+
+    /* Settings */
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .setting-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .setting-item input, .setting-item select {
+      background: #0a0a1a;
+      color: #e0e0e0;
+      border: 1px solid #3a3a5a;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-family: inherit;
       font-size: 0.85em;
     }
-    table.key-map th,
-    table.key-map td {
-      padding: 4px 10px;
-      text-align: left;
-      border-bottom: 1px solid #222;
+    .setting-item input:focus, .setting-item select:focus {
+      outline: none;
+      border-color: #00e5ff;
     }
-    table.key-map th { color: #e63946; }
-    table.key-map td:first-child { color: #aaa; }
 
-    .hidden { display: none !important; }
+    /* Progress */
+    .progress-bar {
+      width: 100%;
+      height: 4px;
+      background: #1a1a3a;
+      border-radius: 2px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #00e5ff;
+      width: 0%;
+      transition: width 0.1s;
+    }
 
-    @media (max-width: 560px) {
-      #nes-screen { width: 100%; height: auto; }
-      h1 { font-size: 1.2em; }
+    /* Symbol table */
+    .symbol-table {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2px;
+      font-size: 0.7em;
+      margin-top: 6px;
+    }
+    .symbol-entry {
+      background: #1a1a3a;
+      padding: 2px 6px;
+      border-radius: 2px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .symbol-entry .sym-val { color: #76ff03; }
+    .symbol-entry .sym-freq { color: #ffab40; }
+
+    @media (max-width: 600px) {
+      .settings-grid { grid-template-columns: 1fr; }
+      .symbol-table { grid-template-columns: repeat(2, 1fr); }
     }
   </style>
 </head>
 <body>
-  <h1>SUPER MARIO BROS.</h1>
+  <h1>TEXT → AUDIO MODULATOR</h1>
+  <p class="subtitle">16-FSK (4bit) テキスト音声変調器</p>
 
-  <div id="screen-container">
-    <canvas id="nes-screen" width="256" height="240"></canvas>
-    <div id="overlay" class="overlay" onclick="document.getElementById('rom-input').click()">
-      <div>
-        <p style="font-size:1.2em;">NES ROM (.nes)</p>
-        <p>ファイルをドラッグ＆ドロップ</p>
-        <p class="hint">または クリックしてファイルを選択</p>
-        <button class="btn" onclick="event.stopPropagation(); document.getElementById('rom-input').click()">
-          ファイルを選択
-        </button>
+  <div class="container">
+
+    <!-- Input Panel -->
+    <div class="panel">
+      <h2>入力テキスト</h2>
+      <div class="btn-row" style="margin-bottom:8px;">
+        <div class="file-input-wrapper">
+          <button onclick="document.getElementById('csv-input').click()" class="secondary">CSVファイル読込</button>
+          <input type="file" id="csv-input" accept=".csv,.txt">
+        </div>
+        <button onclick="loadDefaultCSV()" class="secondary">a.csv を読込</button>
+      </div>
+      <textarea id="input-text" placeholder="ここにテキストを入力、またはCSVファイルを読み込み..."></textarea>
+    </div>
+
+    <!-- Pipeline Visualization -->
+    <div class="panel">
+      <h2>変換パイプライン</h2>
+      <div class="pipeline">
+        <span class="pipe-step" id="step-text">テキスト</span>
+        <span class="pipe-arrow">→</span>
+        <span class="pipe-step" id="step-utf8">UTF-8</span>
+        <span class="pipe-arrow">→</span>
+        <span class="pipe-step" id="step-bits">ビット列</span>
+        <span class="pipe-arrow">→</span>
+        <span class="pipe-step" id="step-frame">フレーム化</span>
+        <span class="pipe-arrow">→</span>
+        <span class="pipe-step" id="step-mod">変調</span>
+        <span class="pipe-arrow">→</span>
+        <span class="pipe-step" id="step-audio">音声出力</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    </div>
+
+    <!-- Data Inspector -->
+    <div class="panel">
+      <h2>データインスペクタ</h2>
+
+      <label>UTF-8 バイト列 (HEX)</label>
+      <div class="data-display" id="disp-hex"></div>
+
+      <label style="margin-top:6px;">ビット列</label>
+      <div class="data-display" id="disp-bits"></div>
+
+      <label style="margin-top:6px;">フレーム構造</label>
+      <div class="data-display" id="disp-frame"></div>
+
+      <label style="margin-top:6px;">シンボル列 (4bit → 周波数)</label>
+      <div class="data-display" id="disp-symbols"></div>
+    </div>
+
+    <!-- Waveform / Spectrum -->
+    <div class="panel">
+      <h2>波形 / スペクトラム</h2>
+      <canvas id="waveform"></canvas>
+      <canvas id="spectrum"></canvas>
+    </div>
+
+    <!-- Settings -->
+    <div class="panel">
+      <h2>設定</h2>
+      <div class="settings-grid">
+        <div class="setting-item">
+          <label>ベース周波数 (Hz)</label>
+          <input type="number" id="set-base-freq" value="800" min="200" max="4000" step="50">
+        </div>
+        <div class="setting-item">
+          <label>周波数間隔 (Hz)</label>
+          <input type="number" id="set-freq-step" value="150" min="50" max="500" step="10">
+        </div>
+        <div class="setting-item">
+          <label>シンボル長 (ms)</label>
+          <input type="number" id="set-symbol-dur" value="50" min="10" max="500" step="10">
+        </div>
+        <div class="setting-item">
+          <label>音量</label>
+          <input type="range" id="set-volume" min="0" max="100" value="50">
+        </div>
+      </div>
+
+      <label style="margin-top:8px;">16-FSK シンボルテーブル</label>
+      <div class="symbol-table" id="symbol-table"></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="panel">
+      <h2>再生コントロール</h2>
+      <div class="btn-row">
+        <button id="btn-encode" onclick="encode()">エンコード</button>
+        <button id="btn-play" onclick="play()" disabled>再生 ▶</button>
+        <button id="btn-stop" onclick="stop()" class="stop" disabled>停止 ■</button>
+        <button id="btn-download" onclick="downloadWav()" class="secondary" disabled>WAVダウンロード</button>
       </div>
     </div>
+
   </div>
 
-  <input type="file" id="rom-input" accept=".nes">
-
-  <div class="toolbar">
-    <button id="btn-reset" class="hidden" onclick="resetNES()">リセット</button>
-    <button id="btn-pause" class="hidden" onclick="togglePause()">一時停止</button>
-    <button id="btn-mute" onclick="toggleMute()">音声: ON</button>
-    <button id="btn-fullscreen" onclick="toggleFullscreen()">フルスクリーン</button>
-  </div>
-
-  <div id="status-bar">ROMファイルを読み込んでください</div>
-  <div id="gamepad-status"></div>
-
-  <div class="info-section">
-    <h3>キーボード操作</h3>
-    <table class="key-map">
-      <tr><th>NESボタン</th><th>キー</th></tr>
-      <tr><td>十字キー (上下左右)</td><td>矢印キー / W A S D</td></tr>
-      <tr><td>Aボタン (ジャンプ)</td><td>X / K</td></tr>
-      <tr><td>Bボタン (ダッシュ)</td><td>Z / J</td></tr>
-      <tr><td>スタート</td><td>Enter</td></tr>
-      <tr><td>セレクト</td><td>Shift (右)</td></tr>
-    </table>
-
-    <h3>ゲームコントローラー</h3>
-    <table class="key-map">
-      <tr><th>NESボタン</th><th>コントローラー</th></tr>
-      <tr><td>十字キー</td><td>D-Pad / 左スティック</td></tr>
-      <tr><td>Aボタン (ジャンプ)</td><td>A / X (下ボタン)</td></tr>
-      <tr><td>Bボタン (ダッシュ)</td><td>B / Circle / X / Square (右・左ボタン)</td></tr>
-      <tr><td>スタート</td><td>Start / Options</td></tr>
-      <tr><td>セレクト</td><td>Back / Share</td></tr>
-    </table>
-  </div>
-
-  <script src="https://unpkg.com/jsnes@1.2.1/dist/jsnes.min.js"></script>
   <script>
   (function() {
     'use strict';
 
     // =========================================================================
-    // DOM elements
+    // Configuration
     // =========================================================================
-    const canvas = document.getElementById('nes-screen');
-    const ctx = canvas.getContext('2d');
-    const overlay = document.getElementById('overlay');
-    const romInput = document.getElementById('rom-input');
-    const statusBar = document.getElementById('status-bar');
-    const gamepadStatus = document.getElementById('gamepad-status');
-    const btnReset = document.getElementById('btn-reset');
-    const btnPause = document.getElementById('btn-pause');
-    const btnMute = document.getElementById('btn-mute');
+    const config = {
+      get baseFreq()   { return parseInt(document.getElementById('set-base-freq').value) || 800; },
+      get freqStep()   { return parseInt(document.getElementById('set-freq-step').value) || 150; },
+      get symbolDur()  { return parseInt(document.getElementById('set-symbol-dur').value) || 50; },
+      get volume()     { return parseInt(document.getElementById('set-volume').value) / 100; },
+      sampleRate: 44100,
+      bitsPerSymbol: 4,  // 16-FSK
+      syncPattern: [0xAA, 0xAA, 0x7E],  // プリアンブル + 同期バイト
+    };
+
+    // =========================================================================
+    // DOM
+    // =========================================================================
+    const inputText      = document.getElementById('input-text');
+    const csvInput       = document.getElementById('csv-input');
+    const dispHex        = document.getElementById('disp-hex');
+    const dispBits       = document.getElementById('disp-bits');
+    const dispFrame      = document.getElementById('disp-frame');
+    const dispSymbols    = document.getElementById('disp-symbols');
+    const waveformCanvas = document.getElementById('waveform');
+    const spectrumCanvas = document.getElementById('spectrum');
+    const progress       = document.getElementById('progress');
+    const btnPlay        = document.getElementById('btn-play');
+    const btnStop        = document.getElementById('btn-stop');
+    const btnDownload    = document.getElementById('btn-download');
+
+    const steps = {
+      text:  document.getElementById('step-text'),
+      utf8:  document.getElementById('step-utf8'),
+      bits:  document.getElementById('step-bits'),
+      frame: document.getElementById('step-frame'),
+      mod:   document.getElementById('step-mod'),
+      audio: document.getElementById('step-audio'),
+    };
 
     // =========================================================================
     // State
     // =========================================================================
-    let nes = null;
-    let romLoaded = false;
-    let paused = false;
-    let muted = false;
-    let animFrameId = null;
-
-    // Frame buffer: ImageData for rendering
-    const imageData = ctx.createImageData(256, 240);
-    const frameBuf32 = new Uint32Array(imageData.data.buffer);
+    let audioBuffer = null;    // Float32Array of samples
+    let audioCtx    = null;
+    let sourceNode  = null;
+    let isPlaying   = false;
+    let animId      = null;
+    let analyser    = null;
 
     // =========================================================================
-    // Audio setup (Web Audio API)
+    // Symbol table display
     // =========================================================================
-    let audioCtx = null;
-    let scriptNode = null;
-    const AUDIO_BUFFER_SIZE = 8192;
-    const audioRingBuf = new Float32Array(AUDIO_BUFFER_SIZE * 2);
-    let audioWritePos = 0;
-    let audioReadPos = 0;
-
-    function audioBufferLength() {
-      if (audioWritePos >= audioReadPos) return audioWritePos - audioReadPos;
-      return AUDIO_BUFFER_SIZE * 2 - audioReadPos + audioWritePos;
-    }
-
-    function initAudio() {
-      if (audioCtx) return;
-      try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)({
-          sampleRate: 44100
-        });
-        // Use 2048 buffer for low latency
-        scriptNode = audioCtx.createScriptProcessor(2048, 0, 2);
-        scriptNode.onaudioprocess = function(e) {
-          const left = e.outputBuffer.getChannelData(0);
-          const right = e.outputBuffer.getChannelData(1);
-          const len = left.length;
-          for (let i = 0; i < len; i++) {
-            if (audioBufferLength() >= 2) {
-              left[i] = muted ? 0 : audioRingBuf[audioReadPos];
-              audioReadPos = (audioReadPos + 1) % (AUDIO_BUFFER_SIZE * 2);
-              right[i] = muted ? 0 : audioRingBuf[audioReadPos];
-              audioReadPos = (audioReadPos + 1) % (AUDIO_BUFFER_SIZE * 2);
-            } else {
-              left[i] = 0;
-              right[i] = 0;
-            }
-          }
-        };
-        scriptNode.connect(audioCtx.destination);
-      } catch (e) {
-        console.warn('Web Audio not available:', e);
+    function updateSymbolTable() {
+      const table = document.getElementById('symbol-table');
+      table.innerHTML = '';
+      for (let i = 0; i < 16; i++) {
+        const freq = config.baseFreq + i * config.freqStep;
+        const bits = i.toString(2).padStart(4, '0');
+        const div = document.createElement('div');
+        div.className = 'symbol-entry';
+        div.innerHTML = `<span class="sym-val">${bits}</span><span class="sym-freq">${freq}Hz</span>`;
+        table.appendChild(div);
       }
     }
+    updateSymbolTable();
+    document.getElementById('set-base-freq').addEventListener('input', updateSymbolTable);
+    document.getElementById('set-freq-step').addEventListener('input', updateSymbolTable);
 
-    function onAudioSample(left, right) {
-      if (!audioCtx) return;
-      audioRingBuf[audioWritePos] = left;
-      audioWritePos = (audioWritePos + 1) % (AUDIO_BUFFER_SIZE * 2);
-      audioRingBuf[audioWritePos] = right;
-      audioWritePos = (audioWritePos + 1) % (AUDIO_BUFFER_SIZE * 2);
+    // =========================================================================
+    // CSV loading
+    // =========================================================================
+    csvInput.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        inputText.value = ev.target.result;
+      };
+      reader.readAsText(file, 'UTF-8');
+    });
+
+    window.loadDefaultCSV = function() {
+      fetch('a.csv')
+        .then(r => { if (!r.ok) throw new Error('a.csv not found'); return r.text(); })
+        .then(text => { inputText.value = text; })
+        .catch(err => alert('a.csv の読込に失敗: ' + err.message));
+    };
+
+    // =========================================================================
+    // CRC-8 (polynomial 0x07)
+    // =========================================================================
+    function crc8(bytes) {
+      let crc = 0x00;
+      for (const b of bytes) {
+        crc ^= b;
+        for (let i = 0; i < 8; i++) {
+          if (crc & 0x80) {
+            crc = ((crc << 1) ^ 0x07) & 0xFF;
+          } else {
+            crc = (crc << 1) & 0xFF;
+          }
+        }
+      }
+      return crc;
     }
 
     // =========================================================================
-    // NES Emulator
+    // Pipeline step highlighting
     // =========================================================================
-    function createNES() {
-      nes = new jsnes.NES({
-        onFrame: onFrame,
-        onAudioSample: onAudioSample,
-        sampleRate: 44100
+    function setStep(name) {
+      const order = ['text', 'utf8', 'bits', 'frame', 'mod', 'audio'];
+      const idx = order.indexOf(name);
+      order.forEach((s, i) => {
+        steps[s].className = 'pipe-step' +
+          (i < idx ? ' done' : '') +
+          (i === idx ? ' active' : '');
       });
     }
 
-    function onFrame(frameBuffer) {
-      // frameBuffer: array of length 256*240, each element is 0xRRGGBB
-      for (let i = 0; i < 256 * 240; i++) {
-        const pixel = frameBuffer[i];
-        // pixel = 0xRRGGBB -> Uint32 little-endian ABGR
-        frameBuf32[i] = 0xFF000000 |
-          ((pixel & 0xFF) << 16) |
-          (pixel & 0xFF00) |
-          ((pixel >> 16) & 0xFF);
+    // =========================================================================
+    // Encode pipeline
+    // =========================================================================
+    window.encode = function() {
+      const text = inputText.value;
+      if (!text.trim()) { alert('テキストを入力してください'); return; }
+
+      // Step 1: Text → UTF-8 bytes
+      setStep('utf8');
+      const encoder = new TextEncoder();
+      const utf8Bytes = encoder.encode(text);
+      const hexStr = Array.from(utf8Bytes).map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+      dispHex.innerHTML = `<span class="hex">${hexStr}</span>  <span style="color:#666">(${utf8Bytes.length} bytes)</span>`;
+
+      // Step 2: Bytes → Bits
+      setStep('bits');
+      let bitStr = '';
+      for (const b of utf8Bytes) {
+        bitStr += b.toString(2).padStart(8, '0');
       }
-      ctx.putImageData(imageData, 0, 0);
-    }
+      // Display with spaces every 8 bits
+      const bitDisplay = bitStr.match(/.{1,8}/g).join(' ');
+      dispBits.innerHTML = `<span class="bits">${bitDisplay}</span>  <span style="color:#666">(${bitStr.length} bits)</span>`;
 
-    // =========================================================================
-    // ROM Loading
-    // =========================================================================
-    function loadROM(arrayBuffer) {
-      initAudio();
-      if (audioCtx && audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
+      // Step 3: Frame construction
+      // [SYNC: AA AA 7E] [LENGTH: 2 bytes] [PAYLOAD] [CRC-8]
+      setStep('frame');
+      const payloadLen = utf8Bytes.length;
+      const lenHigh = (payloadLen >> 8) & 0xFF;
+      const lenLow  = payloadLen & 0xFF;
 
-      try {
-        if (!nes) createNES();
+      const framePayload = [lenHigh, lenLow, ...utf8Bytes];
+      const crc = crc8(framePayload);
 
-        // Convert ArrayBuffer to binary string for jsnes
-        const data = new Uint8Array(arrayBuffer);
-        let romStr = '';
-        for (let i = 0; i < data.length; i++) {
-          romStr += String.fromCharCode(data[i]);
-        }
+      const frame = [...config.syncPattern, lenHigh, lenLow, ...utf8Bytes, crc];
+      const frameHex = frame.map(b => b.toString(16).toUpperCase().padStart(2, '0'));
 
-        nes.loadROM(romStr);
-        romLoaded = true;
+      dispFrame.innerHTML =
+        `<span class="frame-info">同期:</span> <span class="hex">${frameHex.slice(0, 3).join(' ')}</span> | ` +
+        `<span class="frame-info">長さ:</span> <span class="hex">${frameHex.slice(3, 5).join(' ')}</span> (${payloadLen}) | ` +
+        `<span class="frame-info">データ:</span> <span class="hex">${frameHex.slice(5, -1).join(' ')}</span> | ` +
+        `<span class="frame-info">CRC:</span> <span class="hex">${frameHex.slice(-1)[0]}</span>`;
 
-        overlay.classList.add('hidden');
-        btnReset.classList.remove('hidden');
-        btnPause.classList.remove('hidden');
-        statusBar.textContent = '実行中';
-        paused = false;
-
-        // Reset audio buffer
-        audioWritePos = 0;
-        audioReadPos = 0;
-
-        if (animFrameId) cancelAnimationFrame(animFrameId);
-        emulationLoop();
-      } catch (e) {
-        statusBar.textContent = 'エラー: ' + e.message;
-        console.error('ROM load error:', e);
-      }
-    }
-
-    function handleFile(file) {
-      if (!file) return;
-      statusBar.textContent = '読み込み中: ' + file.name;
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        loadROM(e.target.result);
-      };
-      reader.onerror = function() {
-        statusBar.textContent = 'ファイル読み込みエラー';
-      };
-      reader.readAsArrayBuffer(file);
-    }
-
-    // File input change
-    romInput.addEventListener('change', function(e) {
-      handleFile(e.target.files[0]);
-    });
-
-    // Drag and drop
-    const screenContainer = document.getElementById('screen-container');
-    screenContainer.addEventListener('dragover', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      overlay.style.borderColor = '#e63946';
-    });
-    screenContainer.addEventListener('dragleave', function(e) {
-      e.preventDefault();
-      overlay.style.borderColor = '';
-    });
-    screenContainer.addEventListener('drop', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      overlay.style.borderColor = '';
-      const file = e.dataTransfer.files[0];
-      if (file) handleFile(file);
-    });
-
-    // Also allow drop on the whole document body
-    document.body.addEventListener('dragover', function(e) { e.preventDefault(); });
-    document.body.addEventListener('drop', function(e) {
-      e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file) handleFile(file);
-    });
-
-    // =========================================================================
-    // Emulation loop
-    // =========================================================================
-    function emulationLoop() {
-      if (!romLoaded || paused) return;
-      try {
-        nes.frame();
-      } catch (e) {
-        console.error('Emulation error:', e);
-        statusBar.textContent = 'エミュレーションエラー';
-        return;
-      }
-      animFrameId = requestAnimationFrame(emulationLoop);
-    }
-
-    // =========================================================================
-    // Controls: Keyboard
-    // =========================================================================
-    // Key mapping: keyboard key -> [player, NES button]
-    const KEYBOARD_MAP = {
-      // Arrow keys
-      'ArrowUp':     [1, jsnes.Controller.BUTTON_UP],
-      'ArrowDown':   [1, jsnes.Controller.BUTTON_DOWN],
-      'ArrowLeft':   [1, jsnes.Controller.BUTTON_LEFT],
-      'ArrowRight':  [1, jsnes.Controller.BUTTON_RIGHT],
-      // WASD
-      'KeyW':        [1, jsnes.Controller.BUTTON_UP],
-      'KeyS':        [1, jsnes.Controller.BUTTON_DOWN],
-      'KeyA':        [1, jsnes.Controller.BUTTON_LEFT],
-      'KeyD':        [1, jsnes.Controller.BUTTON_RIGHT],
-      // A button (jump) - X, K
-      'KeyX':        [1, jsnes.Controller.BUTTON_A],
-      'KeyK':        [1, jsnes.Controller.BUTTON_A],
-      // B button (run/fire) - Z, J
-      'KeyZ':        [1, jsnes.Controller.BUTTON_B],
-      'KeyJ':        [1, jsnes.Controller.BUTTON_B],
-      // Start - Enter
-      'Enter':       [1, jsnes.Controller.BUTTON_START],
-      // Select - Right Shift
-      'ShiftRight':  [1, jsnes.Controller.BUTTON_SELECT],
-    };
-
-    document.addEventListener('keydown', function(e) {
-      if (!nes || !romLoaded) return;
-      const mapping = KEYBOARD_MAP[e.code];
-      if (mapping) {
-        nes.buttonDown(mapping[0], mapping[1]);
-        e.preventDefault();
-      }
-    });
-
-    document.addEventListener('keyup', function(e) {
-      if (!nes || !romLoaded) return;
-      const mapping = KEYBOARD_MAP[e.code];
-      if (mapping) {
-        nes.buttonUp(mapping[0], mapping[1]);
-        e.preventDefault();
-      }
-    });
-
-    // =========================================================================
-    // Controls: Gamepad API
-    // =========================================================================
-    const GAMEPAD_DEADZONE = 0.4;
-
-    // Track previous gamepad state to detect press/release
-    const gpState = {
-      buttons: {},
-      axes: { up: false, down: false, left: false, right: false }
-    };
-
-    function pollGamepad() {
-      if (!nes || !romLoaded) {
-        requestAnimationFrame(pollGamepad);
-        return;
+      // Step 4: Frame bytes → 4-bit symbols → frequencies
+      setStep('mod');
+      const symbols = [];
+      for (const b of frame) {
+        symbols.push((b >> 4) & 0x0F);  // upper nibble
+        symbols.push(b & 0x0F);          // lower nibble
       }
 
-      const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-      let gpConnected = false;
+      const symbolDisplay = symbols.map(s => {
+        const bits = s.toString(2).padStart(4, '0');
+        const freq = config.baseFreq + s * config.freqStep;
+        return `<span class="bits">${bits}</span>→<span class="freq-info">${freq}Hz</span>`;
+      }).join('  ');
+      dispSymbols.innerHTML = symbolDisplay + `  <span style="color:#666">(${symbols.length} symbols)</span>`;
 
-      for (let gi = 0; gi < gamepads.length; gi++) {
-        const gp = gamepads[gi];
-        if (!gp || !gp.connected) continue;
-        gpConnected = true;
+      // Step 5: Generate audio
+      setStep('audio');
+      const symbolDurSec = config.symbolDur / 1000;
+      const samplesPerSymbol = Math.round(config.sampleRate * symbolDurSec);
+      const totalSamples = symbols.length * samplesPerSymbol;
 
-        // Only handle first connected gamepad for player 1
-        const player = 1;
+      audioBuffer = new Float32Array(totalSamples);
+      const vol = config.volume;
 
-        // Button mapping (Standard Gamepad layout)
-        // buttons[0] = A/X (bottom)    -> NES A (jump)
-        // buttons[1] = B/Circle (right) -> NES B (run)
-        // buttons[2] = X/Square (left)  -> NES B (run, alt)
-        // buttons[3] = Y/Triangle (top) -> NES A (jump, alt)
-        // buttons[8] = Back/Select      -> NES Select
-        // buttons[9] = Start            -> NES Start
-        // buttons[12] = D-Up
-        // buttons[13] = D-Down
-        // buttons[14] = D-Left
-        // buttons[15] = D-Right
-        const btnMap = [
-          [0, jsnes.Controller.BUTTON_A],
-          [1, jsnes.Controller.BUTTON_B],
-          [2, jsnes.Controller.BUTTON_B],
-          [3, jsnes.Controller.BUTTON_A],
-          [8, jsnes.Controller.BUTTON_SELECT],
-          [9, jsnes.Controller.BUTTON_START],
-          [12, jsnes.Controller.BUTTON_UP],
-          [13, jsnes.Controller.BUTTON_DOWN],
-          [14, jsnes.Controller.BUTTON_LEFT],
-          [15, jsnes.Controller.BUTTON_RIGHT],
-        ];
+      // Ramp duration for smooth transitions (anti-click)
+      const rampSamples = Math.min(Math.round(samplesPerSymbol * 0.05), 20);
 
-        for (const [btnIdx, nesBtn] of btnMap) {
-          if (btnIdx >= gp.buttons.length) continue;
-          const pressed = gp.buttons[btnIdx].pressed;
-          const key = gi + '_' + btnIdx;
-          if (pressed && !gpState.buttons[key]) {
-            nes.buttonDown(player, nesBtn);
-          } else if (!pressed && gpState.buttons[key]) {
-            nes.buttonUp(player, nesBtn);
+      for (let si = 0; si < symbols.length; si++) {
+        const freq = config.baseFreq + symbols[si] * config.freqStep;
+        const offset = si * samplesPerSymbol;
+        for (let i = 0; i < samplesPerSymbol; i++) {
+          const t = i / config.sampleRate;
+          let sample = Math.sin(2 * Math.PI * freq * t) * vol;
+
+          // Envelope: ramp up at start, ramp down at end
+          if (i < rampSamples) {
+            sample *= i / rampSamples;
+          } else if (i > samplesPerSymbol - rampSamples) {
+            sample *= (samplesPerSymbol - i) / rampSamples;
           }
-          gpState.buttons[key] = pressed;
+
+          audioBuffer[offset + i] = sample;
         }
-
-        // Left stick -> D-pad
-        if (gp.axes.length >= 2) {
-          const lx = gp.axes[0];
-          const ly = gp.axes[1];
-
-          const left = lx < -GAMEPAD_DEADZONE;
-          const right = lx > GAMEPAD_DEADZONE;
-          const up = ly < -GAMEPAD_DEADZONE;
-          const down = ly > GAMEPAD_DEADZONE;
-
-          if (left && !gpState.axes.left) nes.buttonDown(player, jsnes.Controller.BUTTON_LEFT);
-          if (!left && gpState.axes.left) nes.buttonUp(player, jsnes.Controller.BUTTON_LEFT);
-          if (right && !gpState.axes.right) nes.buttonDown(player, jsnes.Controller.BUTTON_RIGHT);
-          if (!right && gpState.axes.right) nes.buttonUp(player, jsnes.Controller.BUTTON_RIGHT);
-          if (up && !gpState.axes.up) nes.buttonDown(player, jsnes.Controller.BUTTON_UP);
-          if (!up && gpState.axes.up) nes.buttonUp(player, jsnes.Controller.BUTTON_UP);
-          if (down && !gpState.axes.down) nes.buttonDown(player, jsnes.Controller.BUTTON_DOWN);
-          if (!down && gpState.axes.down) nes.buttonUp(player, jsnes.Controller.BUTTON_DOWN);
-
-          gpState.axes.left = left;
-          gpState.axes.right = right;
-          gpState.axes.up = up;
-          gpState.axes.down = down;
-        }
-
-        break; // Only use first gamepad
       }
 
-      if (gpConnected) {
-        gamepadStatus.textContent = 'コントローラー接続済み';
-      }
+      // Draw waveform
+      drawWaveform();
 
-      requestAnimationFrame(pollGamepad);
-    }
+      // Enable buttons
+      btnPlay.disabled = false;
+      btnDownload.disabled = false;
 
-    // Gamepad connection events
-    window.addEventListener('gamepadconnected', function(e) {
-      gamepadStatus.textContent = 'コントローラー接続: ' + e.gamepad.id;
-    });
-    window.addEventListener('gamepaddisconnected', function(e) {
-      gamepadStatus.textContent = 'コントローラー切断';
-      // Clear button state
-      gpState.buttons = {};
-      gpState.axes = { up: false, down: false, left: false, right: false };
-    });
-
-    // Start gamepad polling
-    requestAnimationFrame(pollGamepad);
+      setStep('audio');
+      progress.style.width = '100%';
+    };
 
     // =========================================================================
-    // Toolbar functions
+    // Waveform drawing
     // =========================================================================
-    window.resetNES = function() {
-      if (!nes || !romLoaded) return;
-      // Reset by reloading the ROM triggers a fresh start
-      nes.reset();
-      audioWritePos = 0;
-      audioReadPos = 0;
-      if (paused) {
-        paused = false;
-        btnPause.textContent = '一時停止';
-        statusBar.textContent = '実行中';
-        emulationLoop();
+    function drawWaveform() {
+      const canvas = waveformCanvas;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.scale(dpr, dpr);
+
+      ctx.fillStyle = '#0a0a1a';
+      ctx.fillRect(0, 0, w, h);
+
+      if (!audioBuffer || audioBuffer.length === 0) return;
+
+      // Center line
+      ctx.strokeStyle = '#2a2a4a';
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
+
+      // Waveform
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+
+      const step = audioBuffer.length / w;
+      for (let x = 0; x < w; x++) {
+        const idx = Math.floor(x * step);
+        const y = (1 - audioBuffer[idx]) * h / 2;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
       }
-    };
-
-    window.togglePause = function() {
-      if (!romLoaded) return;
-      paused = !paused;
-      if (paused) {
-        btnPause.textContent = '再開';
-        statusBar.textContent = '一時停止中';
-        if (animFrameId) {
-          cancelAnimationFrame(animFrameId);
-          animFrameId = null;
-        }
-      } else {
-        btnPause.textContent = '一時停止';
-        statusBar.textContent = '実行中';
-        emulationLoop();
-      }
-    };
-
-    window.toggleMute = function() {
-      muted = !muted;
-      btnMute.textContent = muted ? '音声: OFF' : '音声: ON';
-    };
-
-    window.toggleFullscreen = function() {
-      const container = document.getElementById('screen-container');
-      if (!document.fullscreenElement) {
-        (container.requestFullscreen || container.webkitRequestFullscreen || container.mozRequestFullScreen).call(container);
-      } else {
-        (document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen).call(document);
-      }
-    };
-
-    // Handle fullscreen canvas sizing
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
-
-    function onFullscreenChange() {
-      if (document.fullscreenElement) {
-        canvas.style.width = '100vw';
-        canvas.style.height = '100vh';
-        canvas.style.objectFit = 'contain';
-      } else {
-        canvas.style.width = '512px';
-        canvas.style.height = '480px';
-        canvas.style.objectFit = '';
-      }
+      ctx.stroke();
     }
 
     // =========================================================================
-    // Initialize
+    // Live spectrum drawing
     // =========================================================================
-    createNES();
+    function drawSpectrum() {
+      if (!analyser) return;
+      const canvas = spectrumCanvas;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.scale(dpr, dpr);
 
-    // Draw initial black screen
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, 256, 240);
+      const bufLen = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufLen);
 
-    // Try to auto-load smb.nes from same directory (works when served via HTTP)
-    function tryAutoLoad() {
-      if (window.location.protocol === 'file:') return; // Can't fetch on file://
-      statusBar.textContent = 'smb.nes を自動読み込み中...';
-      fetch('smb.nes')
-        .then(function(resp) {
-          if (!resp.ok) throw new Error('not found');
-          return resp.arrayBuffer();
-        })
-        .then(function(buf) { loadROM(buf); })
-        .catch(function() {
-          statusBar.textContent = 'ROMファイルを読み込んでください';
-        });
+      function renderFrame() {
+        if (!isPlaying) return;
+        animId = requestAnimationFrame(renderFrame);
+        analyser.getByteFrequencyData(dataArray);
+
+        ctx.fillStyle = '#0a0a1a';
+        ctx.fillRect(0, 0, w, h);
+
+        const barWidth = w / bufLen * 2;
+        for (let i = 0; i < bufLen; i++) {
+          const val = dataArray[i] / 255;
+          const barH = val * h;
+          const hue = (i / bufLen) * 180 + 180;
+          ctx.fillStyle = `hsla(${hue}, 100%, 60%, 0.8)`;
+          ctx.fillRect(i * barWidth, h - barH, barWidth - 1, barH);
+        }
+      }
+      renderFrame();
     }
-    tryAutoLoad();
+
+    // =========================================================================
+    // Playback
+    // =========================================================================
+    window.play = function() {
+      if (!audioBuffer || isPlaying) return;
+
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+        sampleRate: config.sampleRate
+      });
+
+      const buffer = audioCtx.createBuffer(1, audioBuffer.length, config.sampleRate);
+      buffer.getChannelData(0).set(audioBuffer);
+
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+
+      sourceNode = audioCtx.createBufferSource();
+      sourceNode.buffer = buffer;
+      sourceNode.connect(analyser);
+      analyser.connect(audioCtx.destination);
+
+      sourceNode.onended = function() {
+        isPlaying = false;
+        btnPlay.disabled = false;
+        btnStop.disabled = true;
+        progress.style.width = '100%';
+      };
+
+      sourceNode.start();
+      isPlaying = true;
+      btnPlay.disabled = true;
+      btnStop.disabled = false;
+
+      // Progress animation
+      const totalDur = audioBuffer.length / config.sampleRate;
+      const startTime = audioCtx.currentTime;
+      function updateProgress() {
+        if (!isPlaying) return;
+        const elapsed = audioCtx.currentTime - startTime;
+        const pct = Math.min(elapsed / totalDur * 100, 100);
+        progress.style.width = pct + '%';
+        requestAnimationFrame(updateProgress);
+      }
+      updateProgress();
+
+      drawSpectrum();
+    };
+
+    window.stop = function() {
+      if (!isPlaying || !sourceNode) return;
+      sourceNode.stop();
+      isPlaying = false;
+      btnPlay.disabled = false;
+      btnStop.disabled = true;
+      if (audioCtx) {
+        audioCtx.close();
+        audioCtx = null;
+      }
+    };
+
+    // =========================================================================
+    // WAV download
+    // =========================================================================
+    window.downloadWav = function() {
+      if (!audioBuffer) return;
+
+      const numSamples = audioBuffer.length;
+      const bitsPerSample = 16;
+      const numChannels = 1;
+      const sampleRate = config.sampleRate;
+      const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+      const blockAlign = numChannels * bitsPerSample / 8;
+      const dataSize = numSamples * blockAlign;
+      const headerSize = 44;
+      const buffer = new ArrayBuffer(headerSize + dataSize);
+      const view = new DataView(buffer);
+
+      // RIFF header
+      writeStr(view, 0, 'RIFF');
+      view.setUint32(4, headerSize + dataSize - 8, true);
+      writeStr(view, 8, 'WAVE');
+
+      // fmt chunk
+      writeStr(view, 12, 'fmt ');
+      view.setUint32(16, 16, true);          // chunk size
+      view.setUint16(20, 1, true);           // PCM
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, byteRate, true);
+      view.setUint16(32, blockAlign, true);
+      view.setUint16(34, bitsPerSample, true);
+
+      // data chunk
+      writeStr(view, 36, 'data');
+      view.setUint32(40, dataSize, true);
+
+      for (let i = 0; i < numSamples; i++) {
+        const sample = Math.max(-1, Math.min(1, audioBuffer[i]));
+        view.setInt16(headerSize + i * 2, sample * 0x7FFF, true);
+      }
+
+      const blob = new Blob([buffer], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'modulated_audio.wav';
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    function writeStr(view, offset, str) {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
+      }
+    }
 
   })();
   </script>
