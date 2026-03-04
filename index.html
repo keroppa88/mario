@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>テキスト→音声変調 (16-FSK / 4bit)</title>
+  <title>テキスト→音声変調</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -140,6 +140,7 @@
     .bits { color: #76ff03; }
     .frame-info { color: #e040fb; }
     .freq-info { color: #00e5ff; }
+    .morse-info { color: #ff6e40; }
 
     /* Waveform canvas */
     #waveform {
@@ -184,6 +185,33 @@
       border-color: #00e5ff;
     }
 
+    /* Mode selector */
+    .mode-selector {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .mode-btn {
+      padding: 6px 14px;
+      background: #1a1a3a;
+      color: #888;
+      border: 1px solid #3a3a5a;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.8em;
+      font-weight: normal;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .mode-btn:hover { border-color: #00e5ff; color: #ccc; background: #1a1a3a; }
+    .mode-btn.active {
+      background: #00e5ff;
+      color: #000;
+      border-color: #00e5ff;
+      font-weight: bold;
+    }
+
     /* Progress */
     .progress-bar {
       width: 100%;
@@ -218,6 +246,15 @@
     .symbol-entry .sym-val { color: #76ff03; }
     .symbol-entry .sym-freq { color: #ffab40; }
 
+    .mode-desc {
+      font-size: 0.75em;
+      color: #666;
+      margin-bottom: 8px;
+      padding: 6px 8px;
+      background: #0a0a1a;
+      border-radius: 4px;
+    }
+
     @media (max-width: 600px) {
       .settings-grid { grid-template-columns: 1fr; }
       .symbol-table { grid-template-columns: repeat(2, 1fr); }
@@ -226,7 +263,7 @@
 </head>
 <body>
   <h1>TEXT → AUDIO MODULATOR</h1>
-  <p class="subtitle">16-FSK (4bit) テキスト音声変調器</p>
+  <p class="subtitle" id="subtitle">FSK テキスト音声変調器</p>
 
   <div class="container">
 
@@ -240,7 +277,20 @@
         </div>
         <button onclick="loadDefaultCSV()" class="secondary">a.csv を読込</button>
       </div>
-      <textarea id="input-text" placeholder="ここにテキストを入力、またはCSVファイルを読み込み..."></textarea>
+      <textarea id="input-text">祇園精舍の鐘の声、諸行無常の響きあり。娑羅双樹の花の色、盛者必衰の理をあらはす。驕れる人も久しからず、ただ春の夜の夢のごとし。猛き者もつひにはほろびぬ、ひとへに風の前の塵に同じ。</textarea>
+    </div>
+
+    <!-- Modulation Mode -->
+    <div class="panel">
+      <h2>変調モード</h2>
+      <div class="mode-selector" id="mode-selector">
+        <button class="mode-btn" data-mode="fsk2">2bit (4-FSK)</button>
+        <button class="mode-btn active" data-mode="fsk4">4bit (16-FSK)</button>
+        <button class="mode-btn" data-mode="fsk8">8bit (256-FSK)</button>
+        <button class="mode-btn" data-mode="fsk16">16bit (65536-FSK)</button>
+        <button class="mode-btn" data-mode="morse">モールス信号</button>
+      </div>
+      <div class="mode-desc" id="mode-desc">16-FSK: 1シンボル=4bit、16段階の周波数で符号化。安定性と速度のバランス良し。</div>
     </div>
 
     <!-- Pipeline Visualization -->
@@ -275,7 +325,7 @@
       <label style="margin-top:6px;">フレーム構造</label>
       <div class="data-display" id="disp-frame"></div>
 
-      <label style="margin-top:6px;">シンボル列 (4bit → 周波数)</label>
+      <label style="margin-top:6px;">シンボル列</label>
       <div class="data-display" id="disp-symbols"></div>
     </div>
 
@@ -308,7 +358,7 @@
         </div>
       </div>
 
-      <label style="margin-top:8px;">16-FSK シンボルテーブル</label>
+      <label style="margin-top:8px;" id="symbol-table-label">シンボルテーブル</label>
       <div class="symbol-table" id="symbol-table"></div>
     </div>
 
@@ -338,9 +388,47 @@
       get symbolDur()  { return parseInt(document.getElementById('set-symbol-dur').value) || 50; },
       get volume()     { return parseInt(document.getElementById('set-volume').value) / 100; },
       sampleRate: 44100,
-      bitsPerSymbol: 4,  // 16-FSK
-      syncPattern: [0xAA, 0xAA, 0x7E],  // プリアンブル + 同期バイト
+      syncPattern: [0xAA, 0xAA, 0x7E],
     };
+
+    // =========================================================================
+    // Modulation modes
+    // =========================================================================
+    let currentMode = 'fsk4';
+
+    const MODE_INFO = {
+      fsk2:  { bits: 2,  symbols: 4,     label: '4-FSK (2bit)',     desc: '4-FSK: 1シンボル=2bit、4段階の周波数。超安定だが遅い。' },
+      fsk4:  { bits: 4,  symbols: 16,    label: '16-FSK (4bit)',    desc: '16-FSK: 1シンボル=4bit、16段階の周波数。安定性と速度のバランス良し。' },
+      fsk8:  { bits: 8,  symbols: 256,   label: '256-FSK (8bit)',   desc: '256-FSK: 1シンボル=8bit、256段階の周波数。高速だが環境依存。' },
+      fsk16: { bits: 16, symbols: 65536, label: '65536-FSK (16bit)', desc: '65536-FSK: 1シンボル=16bit、65536段階の周波数。超高速だが実用性は限定的。' },
+      morse: { bits: 0,  symbols: 0,     label: 'モールス信号',      desc: 'モールス信号: 短点(・)と長点(-)で文字を符号化。古典的な通信方式。' },
+    };
+
+    // =========================================================================
+    // Morse code table
+    // =========================================================================
+    const MORSE_TABLE = {
+      'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---',
+      'K':'-.-','L':'.-..','M':'--','N':'-.','O':'---','P':'.--.','Q':'--.-','R':'.-.','S':'...','T':'-',
+      'U':'..-','V':'...-','W':'.--','X':'-..-','Y':'-.--','Z':'--..',
+      '0':'-----','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....',
+      '6':'-....','7':'--...','8':'---..','9':'----.',
+      '.':'.-.-.-',',':'--..--','?':'..--..','!':'-.-.--',':':'---...',';':'-.-.-.',
+      '-':'-....-','/':'-..-.','(':'-.--.',')':'-.--.-','=':'-...-','+':'.-.-.',
+      '@':'.--.-.','\'':'.----.','\"':'.-..-.','_':'..--.-',
+      ' ':' ',
+    };
+
+    // Japanese Kana to Romaji for Morse (Wabun code simplified to romaji approach)
+    function textToMorseSource(text) {
+      // Convert to uppercase for latin, keep as-is for display
+      return text.toUpperCase();
+    }
+
+    function charToMorse(ch) {
+      if (MORSE_TABLE[ch]) return MORSE_TABLE[ch];
+      return null; // unknown character
+    }
 
     // =========================================================================
     // DOM
@@ -357,6 +445,9 @@
     const btnPlay        = document.getElementById('btn-play');
     const btnStop        = document.getElementById('btn-stop');
     const btnDownload    = document.getElementById('btn-download');
+    const subtitle       = document.getElementById('subtitle');
+    const modeDesc       = document.getElementById('mode-desc');
+    const symbolTableLabel = document.getElementById('symbol-table-label');
 
     const steps = {
       text:  document.getElementById('step-text'),
@@ -370,7 +461,7 @@
     // =========================================================================
     // State
     // =========================================================================
-    let audioBuffer = null;    // Float32Array of samples
+    let audioBuffer = null;
     let audioCtx    = null;
     let sourceNode  = null;
     let isPlaying   = false;
@@ -378,17 +469,65 @@
     let analyser    = null;
 
     // =========================================================================
+    // Mode selector
+    // =========================================================================
+    document.getElementById('mode-selector').addEventListener('click', function(e) {
+      const btn = e.target.closest('.mode-btn');
+      if (!btn) return;
+      const mode = btn.dataset.mode;
+      currentMode = mode;
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const info = MODE_INFO[mode];
+      modeDesc.textContent = info.desc;
+      subtitle.textContent = info.label + ' テキスト音声変調器';
+      updateSymbolTable();
+    });
+
+    // =========================================================================
     // Symbol table display
     // =========================================================================
     function updateSymbolTable() {
       const table = document.getElementById('symbol-table');
       table.innerHTML = '';
-      for (let i = 0; i < 16; i++) {
+
+      if (currentMode === 'morse') {
+        symbolTableLabel.textContent = 'モールス信号テーブル (抜粋)';
+        table.style.gridTemplateColumns = 'repeat(4, 1fr)';
+        const show = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
+        for (const ch of show) {
+          const div = document.createElement('div');
+          div.className = 'symbol-entry';
+          div.innerHTML = `<span class="sym-val">${ch}</span><span class="sym-freq">${MORSE_TABLE[ch]}</span>`;
+          table.appendChild(div);
+        }
+        return;
+      }
+
+      const info = MODE_INFO[currentMode];
+      const numSymbols = info.symbols;
+      symbolTableLabel.textContent = `${info.label} シンボルテーブル`;
+
+      // For large tables, show only a subset
+      const maxShow = Math.min(numSymbols, 32);
+      const cols = numSymbols <= 16 ? 4 : numSymbols <= 256 ? 8 : 4;
+      table.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+      for (let i = 0; i < maxShow; i++) {
         const freq = config.baseFreq + i * config.freqStep;
-        const bits = i.toString(2).padStart(4, '0');
+        const bits = i.toString(2).padStart(info.bits, '0');
         const div = document.createElement('div');
         div.className = 'symbol-entry';
         div.innerHTML = `<span class="sym-val">${bits}</span><span class="sym-freq">${freq}Hz</span>`;
+        table.appendChild(div);
+      }
+      if (maxShow < numSymbols) {
+        const div = document.createElement('div');
+        div.className = 'symbol-entry';
+        div.style.gridColumn = `1 / -1`;
+        div.style.textAlign = 'center';
+        div.style.color = '#666';
+        div.innerHTML = `... 他 ${numSymbols - maxShow} シンボル (${config.baseFreq + maxShow * config.freqStep}Hz ~ ${config.baseFreq + (numSymbols - 1) * config.freqStep}Hz)`;
         table.appendChild(div);
       }
     }
@@ -448,7 +587,176 @@
     }
 
     // =========================================================================
-    // Encode pipeline
+    // FSK Encode (generic N-bit)
+    // =========================================================================
+    function encodeFSK(utf8Bytes, bitsPerSymbol) {
+      // Frame: [SYNC: AA AA 7E] [LENGTH: 2 bytes] [PAYLOAD] [CRC-8]
+      setStep('frame');
+      const payloadLen = utf8Bytes.length;
+      const lenHigh = (payloadLen >> 8) & 0xFF;
+      const lenLow  = payloadLen & 0xFF;
+      const framePayload = [lenHigh, lenLow, ...utf8Bytes];
+      const crc = crc8(framePayload);
+      const frame = [...config.syncPattern, lenHigh, lenLow, ...utf8Bytes, crc];
+      const frameHex = frame.map(b => b.toString(16).toUpperCase().padStart(2, '0'));
+
+      dispFrame.innerHTML =
+        `<span class="frame-info">同期:</span> <span class="hex">${frameHex.slice(0, 3).join(' ')}</span> | ` +
+        `<span class="frame-info">長さ:</span> <span class="hex">${frameHex.slice(3, 5).join(' ')}</span> (${payloadLen}) | ` +
+        `<span class="frame-info">データ:</span> <span class="hex">${frameHex.slice(5, -1).join(' ')}</span> | ` +
+        `<span class="frame-info">CRC:</span> <span class="hex">${frameHex.slice(-1)[0]}</span>`;
+
+      // Frame bytes → N-bit symbols
+      setStep('mod');
+
+      // Convert frame to bit string
+      let allBits = '';
+      for (const b of frame) {
+        allBits += b.toString(2).padStart(8, '0');
+      }
+      // Pad to multiple of bitsPerSymbol
+      while (allBits.length % bitsPerSymbol !== 0) {
+        allBits += '0';
+      }
+
+      const symbols = [];
+      for (let i = 0; i < allBits.length; i += bitsPerSymbol) {
+        const chunk = allBits.substring(i, i + bitsPerSymbol);
+        symbols.push(parseInt(chunk, 2));
+      }
+
+      // Display symbols (limit for large sets)
+      const maxDisp = Math.min(symbols.length, 100);
+      const symbolDisplay = symbols.slice(0, maxDisp).map(s => {
+        const bits = s.toString(2).padStart(bitsPerSymbol, '0');
+        const freq = config.baseFreq + s * config.freqStep;
+        return `<span class="bits">${bits}</span>→<span class="freq-info">${freq}Hz</span>`;
+      }).join('  ');
+      const ellipsis = symbols.length > maxDisp ? `  <span style="color:#666">... +${symbols.length - maxDisp}</span>` : '';
+      dispSymbols.innerHTML = symbolDisplay + ellipsis + `  <span style="color:#666">(${symbols.length} symbols)</span>`;
+
+      // Generate audio
+      setStep('audio');
+      const symbolDurSec = config.symbolDur / 1000;
+      const samplesPerSymbol = Math.round(config.sampleRate * symbolDurSec);
+      const totalSamples = symbols.length * samplesPerSymbol;
+      const buf = new Float32Array(totalSamples);
+      const vol = config.volume;
+      const rampSamples = Math.min(Math.round(samplesPerSymbol * 0.05), 20);
+
+      for (let si = 0; si < symbols.length; si++) {
+        const freq = config.baseFreq + symbols[si] * config.freqStep;
+        const offset = si * samplesPerSymbol;
+        for (let i = 0; i < samplesPerSymbol; i++) {
+          const t = i / config.sampleRate;
+          let sample = Math.sin(2 * Math.PI * freq * t) * vol;
+          if (i < rampSamples) {
+            sample *= i / rampSamples;
+          } else if (i > samplesPerSymbol - rampSamples) {
+            sample *= (samplesPerSymbol - i) / rampSamples;
+          }
+          buf[offset + i] = sample;
+        }
+      }
+      return buf;
+    }
+
+    // =========================================================================
+    // Morse Encode
+    // =========================================================================
+    function encodeMorse(text) {
+      setStep('frame');
+      // For morse, no binary frame - convert text directly
+      const morseSource = textToMorseSource(text);
+      const morseSequence = [];
+      let morseDisplay = '';
+
+      for (const ch of morseSource) {
+        const code = charToMorse(ch);
+        if (code === null) continue; // skip unknown
+        if (code === ' ') {
+          morseSequence.push({ type: 'word-gap' });
+          morseDisplay += ' <span style="color:#666">/</span> ';
+        } else {
+          for (const sym of code) {
+            morseSequence.push({ type: sym === '.' ? 'dit' : 'dah' });
+          }
+          morseSequence.push({ type: 'char-gap' });
+          morseDisplay += `<span class="morse-info">${ch}</span>=<span class="bits">${code}</span>  `;
+        }
+      }
+
+      dispFrame.innerHTML = '<span class="frame-info">モールス信号（フレーム不使用）</span>';
+      dispSymbols.innerHTML = morseDisplay;
+
+      // Generate audio
+      setStep('audio');
+      const freq = config.baseFreq;
+      const vol = config.volume;
+      const ditDur = config.symbolDur / 1000;  // dit duration in seconds
+      const dahDur = ditDur * 3;
+      const elementGap = ditDur;     // gap between dits/dahs within a character
+      const charGap = ditDur * 3;    // gap between characters
+      const wordGap = ditDur * 7;    // gap between words
+
+      // Calculate total duration
+      let totalDur = 0;
+      for (const item of morseSequence) {
+        switch (item.type) {
+          case 'dit': totalDur += ditDur + elementGap; break;
+          case 'dah': totalDur += dahDur + elementGap; break;
+          case 'char-gap': totalDur += charGap - elementGap; break; // subtract already-added element gap
+          case 'word-gap': totalDur += wordGap; break;
+        }
+      }
+
+      const totalSamples = Math.round(totalDur * config.sampleRate);
+      const buf = new Float32Array(totalSamples);
+      let pos = 0;
+
+      const rampMs = 0.002; // 2ms ramp for click prevention
+      const rampSamples = Math.round(rampMs * config.sampleRate);
+
+      function writeTone(duration) {
+        const samples = Math.round(duration * config.sampleRate);
+        for (let i = 0; i < samples && pos + i < buf.length; i++) {
+          const t = i / config.sampleRate;
+          let sample = Math.sin(2 * Math.PI * freq * t) * vol;
+          if (i < rampSamples) sample *= i / rampSamples;
+          if (i > samples - rampSamples) sample *= (samples - i) / rampSamples;
+          buf[pos + i] = sample;
+        }
+        pos += samples;
+      }
+
+      function writeSilence(duration) {
+        pos += Math.round(duration * config.sampleRate);
+      }
+
+      for (const item of morseSequence) {
+        switch (item.type) {
+          case 'dit':
+            writeTone(ditDur);
+            writeSilence(elementGap);
+            break;
+          case 'dah':
+            writeTone(dahDur);
+            writeSilence(elementGap);
+            break;
+          case 'char-gap':
+            writeSilence(charGap - elementGap);
+            break;
+          case 'word-gap':
+            writeSilence(wordGap);
+            break;
+        }
+      }
+
+      return buf;
+    }
+
+    // =========================================================================
+    // Main encode
     // =========================================================================
     window.encode = function() {
       const text = inputText.value;
@@ -467,81 +775,20 @@
       for (const b of utf8Bytes) {
         bitStr += b.toString(2).padStart(8, '0');
       }
-      // Display with spaces every 8 bits
       const bitDisplay = bitStr.match(/.{1,8}/g).join(' ');
       dispBits.innerHTML = `<span class="bits">${bitDisplay}</span>  <span style="color:#666">(${bitStr.length} bits)</span>`;
 
-      // Step 3: Frame construction
-      // [SYNC: AA AA 7E] [LENGTH: 2 bytes] [PAYLOAD] [CRC-8]
-      setStep('frame');
-      const payloadLen = utf8Bytes.length;
-      const lenHigh = (payloadLen >> 8) & 0xFF;
-      const lenLow  = payloadLen & 0xFF;
-
-      const framePayload = [lenHigh, lenLow, ...utf8Bytes];
-      const crc = crc8(framePayload);
-
-      const frame = [...config.syncPattern, lenHigh, lenLow, ...utf8Bytes, crc];
-      const frameHex = frame.map(b => b.toString(16).toUpperCase().padStart(2, '0'));
-
-      dispFrame.innerHTML =
-        `<span class="frame-info">同期:</span> <span class="hex">${frameHex.slice(0, 3).join(' ')}</span> | ` +
-        `<span class="frame-info">長さ:</span> <span class="hex">${frameHex.slice(3, 5).join(' ')}</span> (${payloadLen}) | ` +
-        `<span class="frame-info">データ:</span> <span class="hex">${frameHex.slice(5, -1).join(' ')}</span> | ` +
-        `<span class="frame-info">CRC:</span> <span class="hex">${frameHex.slice(-1)[0]}</span>`;
-
-      // Step 4: Frame bytes → 4-bit symbols → frequencies
-      setStep('mod');
-      const symbols = [];
-      for (const b of frame) {
-        symbols.push((b >> 4) & 0x0F);  // upper nibble
-        symbols.push(b & 0x0F);          // lower nibble
+      // Step 3+4+5: Mode-specific encoding
+      if (currentMode === 'morse') {
+        audioBuffer = encodeMorse(text);
+      } else {
+        const bitsPerSymbol = MODE_INFO[currentMode].bits;
+        audioBuffer = encodeFSK(utf8Bytes, bitsPerSymbol);
       }
 
-      const symbolDisplay = symbols.map(s => {
-        const bits = s.toString(2).padStart(4, '0');
-        const freq = config.baseFreq + s * config.freqStep;
-        return `<span class="bits">${bits}</span>→<span class="freq-info">${freq}Hz</span>`;
-      }).join('  ');
-      dispSymbols.innerHTML = symbolDisplay + `  <span style="color:#666">(${symbols.length} symbols)</span>`;
-
-      // Step 5: Generate audio
-      setStep('audio');
-      const symbolDurSec = config.symbolDur / 1000;
-      const samplesPerSymbol = Math.round(config.sampleRate * symbolDurSec);
-      const totalSamples = symbols.length * samplesPerSymbol;
-
-      audioBuffer = new Float32Array(totalSamples);
-      const vol = config.volume;
-
-      // Ramp duration for smooth transitions (anti-click)
-      const rampSamples = Math.min(Math.round(samplesPerSymbol * 0.05), 20);
-
-      for (let si = 0; si < symbols.length; si++) {
-        const freq = config.baseFreq + symbols[si] * config.freqStep;
-        const offset = si * samplesPerSymbol;
-        for (let i = 0; i < samplesPerSymbol; i++) {
-          const t = i / config.sampleRate;
-          let sample = Math.sin(2 * Math.PI * freq * t) * vol;
-
-          // Envelope: ramp up at start, ramp down at end
-          if (i < rampSamples) {
-            sample *= i / rampSamples;
-          } else if (i > samplesPerSymbol - rampSamples) {
-            sample *= (samplesPerSymbol - i) / rampSamples;
-          }
-
-          audioBuffer[offset + i] = sample;
-        }
-      }
-
-      // Draw waveform
       drawWaveform();
-
-      // Enable buttons
       btnPlay.disabled = false;
       btnDownload.disabled = false;
-
       setStep('audio');
       progress.style.width = '100%';
     };
@@ -564,14 +811,12 @@
 
       if (!audioBuffer || audioBuffer.length === 0) return;
 
-      // Center line
       ctx.strokeStyle = '#2a2a4a';
       ctx.beginPath();
       ctx.moveTo(0, h / 2);
       ctx.lineTo(w, h / 2);
       ctx.stroke();
 
-      // Waveform
       ctx.strokeStyle = '#00e5ff';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -656,7 +901,6 @@
       btnPlay.disabled = true;
       btnStop.disabled = false;
 
-      // Progress animation
       const totalDur = audioBuffer.length / config.sampleRate;
       const startTime = audioCtx.currentTime;
       function updateProgress() {
@@ -667,7 +911,6 @@
         requestAnimationFrame(updateProgress);
       }
       updateProgress();
-
       drawSpectrum();
     };
 
@@ -700,22 +943,17 @@
       const buffer = new ArrayBuffer(headerSize + dataSize);
       const view = new DataView(buffer);
 
-      // RIFF header
       writeStr(view, 0, 'RIFF');
       view.setUint32(4, headerSize + dataSize - 8, true);
       writeStr(view, 8, 'WAVE');
-
-      // fmt chunk
       writeStr(view, 12, 'fmt ');
-      view.setUint32(16, 16, true);          // chunk size
-      view.setUint16(20, 1, true);           // PCM
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
       view.setUint16(22, numChannels, true);
       view.setUint32(24, sampleRate, true);
       view.setUint32(28, byteRate, true);
       view.setUint16(32, blockAlign, true);
       view.setUint16(34, bitsPerSample, true);
-
-      // data chunk
       writeStr(view, 36, 'data');
       view.setUint32(40, dataSize, true);
 
