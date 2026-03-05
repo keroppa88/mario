@@ -295,6 +295,7 @@
         <button class="mode-btn" data-mode="fsk8">8bit (256-FSK)</button>
         <button class="mode-btn" data-mode="fsk16">16bit (65536-FSK)</button>
         <button class="mode-btn" data-mode="morse">モールス信号（英数字のみ）</button>
+        <button class="mode-btn" data-mode="phone">ポケベル式 (4×4 DTMF)</button>
       </div>
       <div class="mode-desc" id="mode-desc">16-FSK: 1シンボル=4bit、16段階の周波数で符号化。安定性と速度のバランス良し。</div>
     </div>
@@ -408,6 +409,7 @@
       fsk8:  { bits: 8,  symbols: 256,   label: '256-FSK (8bit)',   desc: '256-FSK: 1シンボル=8bit、256段階の周波数。高速だが環境依存。' },
       fsk16: { bits: 16, symbols: 65536, label: '65536-FSK (16bit)', desc: '65536-FSK: 1シンボル=16bit、65536段階の周波数。超高速だが実用性は限定的。' },
       morse: { bits: 0,  symbols: 0,     label: 'モールス信号',      desc: 'モールス信号: 短点(・)と長点(-)で文字を符号化。古典的な通信方式。※英数字(A-Z, 0-9)と一部記号のみ対応。日本語は変換できません。' },
+      phone: { bits: 0,  symbols: 16,    label: 'ポケベル式 DTMF',  desc: 'ポケベル式: 4×4 DTMF和音(16種)で50音を符号化。2つの和音で1文字を表現。行(第1和音)+段(第2和音)。' },
     };
 
     // =========================================================================
@@ -424,6 +426,96 @@
       '@':'.--.-.','\'':'.----.','\"':'.-..-.','_':'..--.-',
       ' ':' ',
     };
+
+    // =========================================================================
+    // Phone/Pager DTMF (ポケベル式)
+    // =========================================================================
+    const DTMF_ROW_FREQS = [697, 770, 852, 941];
+    const DTMF_COL_FREQS = [1209, 1336, 1477, 1633];
+
+    // Chord index (0-15) → DTMF frequencies
+    // Grid layout:
+    //   Col0(1209) Col1(1336) Col2(1477) Col3(1633)
+    // Row0(697):  [0]=1    [1]=2    [2]=3    [3]=A
+    // Row1(770):  [4]=4    [5]=5    [6]=6    [7]=B
+    // Row2(852):  [8]=7    [9]=8    [10]=9   [11]=C
+    // Row3(941):  [12]=*   [13]=0   [14]=#   [15]=D
+    const DTMF_KEY_LABELS = ['1','2','3','A','4','5','6','B','7','8','9','C','*','0','#','D'];
+
+    function getDTMFFreqs(chordIdx) {
+      const row = Math.floor(chordIdx / 4);
+      const col = chordIdx % 4;
+      return [DTMF_ROW_FREQS[row], DTMF_COL_FREQS[col]];
+    }
+
+    // ポケベル式: 2和音で1文字
+    // 第1和音 = 行 (0-15), 第2和音 = 段 (0-4)
+    //
+    // Row mapping (第1和音):
+    //  0: あ行  1: か行  2: さ行  3: た行
+    //  4: な行  5: は行  6: ま行  7: や行
+    //  8: ら行  9: わ行  10: が行 11: ざ行
+    // 12: だ行 13: ば行 14: ぱ行  15: 記号
+    //
+    // Column mapping (第2和音):
+    //  0: あ段  1: い段  2: う段  3: え段  4: お段
+
+    const PHONE_ROW_LABELS = [
+      'あ行','か行','さ行','た行',
+      'な行','は行','ま行','や行',
+      'ら行','わ行','が行','ざ行',
+      'だ行','ば行','ぱ行','記号'
+    ];
+
+    const PHONE_ROW_CHARS = [
+      ['あ','い','う','え','お'],  // 0
+      ['か','き','く','け','こ'],  // 1
+      ['さ','し','す','せ','そ'],  // 2
+      ['た','ち','つ','て','と'],  // 3
+      ['な','に','ぬ','ね','の'],  // 4
+      ['は','ひ','ふ','へ','ほ'],  // 5
+      ['ま','み','む','め','も'],  // 6
+      ['や','','ゆ','','よ'],      // 7 (い段・え段は空)
+      ['ら','り','る','れ','ろ'],  // 8
+      ['わ','を','ん','',''],      // 9
+      ['が','ぎ','ぐ','げ','ご'],  // 10
+      ['ざ','じ','ず','ぜ','ぞ'],  // 11
+      ['だ','ぢ','づ','で','ど'],  // 12
+      ['ば','び','ぶ','べ','ぼ'],  // 13
+      ['ぱ','ぴ','ぷ','ぺ','ぽ'],  // 14
+      ['。','、','ー','！','？'],   // 15
+    ];
+
+    // Build reverse map: kana → { row, col }
+    const KANA_TO_PHONE = {};
+    PHONE_ROW_CHARS.forEach((chars, row) => {
+      chars.forEach((ch, col) => {
+        if (ch) KANA_TO_PHONE[ch] = { row, col };
+      });
+    });
+    // Space
+    KANA_TO_PHONE[' '] = { row: 15, col: 5 };
+    KANA_TO_PHONE['　'] = { row: 15, col: 5 };
+
+    // Katakana → Hiragana conversion
+    function katakanaToHiragana(str) {
+      return str.replace(/[\u30A1-\u30F6]/g, function(ch) {
+        return String.fromCharCode(ch.charCodeAt(0) - 0x60);
+      });
+    }
+
+    // Text → key press pairs [{char, row, col}, ...]
+    function textToPhonePairs(text) {
+      const hira = katakanaToHiragana(text);
+      const pairs = [];
+      for (const ch of hira) {
+        if (KANA_TO_PHONE[ch]) {
+          pairs.push({ char: ch, ...KANA_TO_PHONE[ch] });
+        }
+        // Skip characters not in the table (kanji etc.)
+      }
+      return pairs;
+    }
 
     // Japanese Kana to Romaji for Morse (Wabun code simplified to romaji approach)
     function textToMorseSource(text) {
@@ -496,6 +588,47 @@
     function updateSymbolTable() {
       const table = document.getElementById('symbol-table');
       table.innerHTML = '';
+
+      if (currentMode === 'phone') {
+        symbolTableLabel.textContent = 'ポケベル式 DTMF 50音テーブル';
+        table.className = 'symbol-table';
+        table.style.gridTemplateColumns = 'auto repeat(5, 1fr)';
+        // Header row
+        const vowels = ['あ段','い段','う段','え段','お段'];
+        const headerBlank = document.createElement('div');
+        headerBlank.className = 'symbol-entry';
+        headerBlank.style.background = '#0a0a1a';
+        headerBlank.innerHTML = '<span style="color:#00e5ff;">行＼段</span>';
+        table.appendChild(headerBlank);
+        for (const v of vowels) {
+          const hd = document.createElement('div');
+          hd.className = 'symbol-entry';
+          hd.style.background = '#0a0a1a';
+          hd.innerHTML = `<span style="color:#00e5ff;">${v}</span>`;
+          table.appendChild(hd);
+        }
+        // Data rows
+        for (let r = 0; r < 16; r++) {
+          const freqs1 = getDTMFFreqs(r);
+          const rowDiv = document.createElement('div');
+          rowDiv.className = 'symbol-entry';
+          rowDiv.innerHTML = `<span class="sym-val">${DTMF_KEY_LABELS[r]}</span><span class="sym-freq">${PHONE_ROW_LABELS[r]}</span>`;
+          table.appendChild(rowDiv);
+          for (let c = 0; c < 5; c++) {
+            const ch = PHONE_ROW_CHARS[r][c] || '';
+            const freqs2 = getDTMFFreqs(c);
+            const cellDiv = document.createElement('div');
+            cellDiv.className = 'symbol-entry';
+            if (ch) {
+              cellDiv.innerHTML = `<span class="sym-val" style="font-size:1.2em;">${ch}</span>`;
+            } else {
+              cellDiv.innerHTML = '<span style="color:#333;">-</span>';
+            }
+            table.appendChild(cellDiv);
+          }
+        }
+        return;
+      }
 
       if (currentMode === 'morse') {
         symbolTableLabel.textContent = 'モールス信号テーブル (抜粋)';
@@ -774,6 +907,76 @@
     }
 
     // =========================================================================
+    // Phone/Pager DTMF Encode (ポケベル式)
+    // =========================================================================
+    function encodePhone(text) {
+      setStep('frame');
+      const pairs = textToPhonePairs(text);
+
+      if (pairs.length === 0) {
+        dispFrame.innerHTML = '<span class="frame-info" style="color:#e63946;">⚠ 変換可能なかな文字がありません。ひらがな・カタカナ（50音）を入力してください。</span>';
+        dispSymbols.innerHTML = '';
+        return new Float32Array(0);
+      }
+
+      // Display frame info
+      const pairDisplay = pairs.map(p => {
+        const rowLabel = DTMF_KEY_LABELS[p.row];
+        const colLabel = DTMF_KEY_LABELS[p.col];
+        return `<span class="morse-info">${p.char}</span>=<span class="bits">[${rowLabel},${colLabel}]</span>`;
+      }).join('  ');
+      dispFrame.innerHTML = `<span class="frame-info">ポケベル式 (${pairs.length}文字)</span>`;
+      dispSymbols.innerHTML = pairDisplay;
+
+      // Generate audio
+      setStep('audio');
+      const toneDur = config.symbolDur / 1000;       // duration of each chord tone
+      const intraGap = toneDur * 0.3;                 // gap between two chords of a pair
+      const interGap = toneDur * 0.8;                 // gap between character pairs
+      const vol = config.volume;
+      const sr = config.sampleRate;
+      const rampMs = 0.003;
+      const rampSamples = Math.round(rampMs * sr);
+
+      // Calculate total duration
+      const pairDur = toneDur * 2 + intraGap + interGap;
+      const totalDur = pairs.length * pairDur;
+      const totalSamples = Math.round(totalDur * sr);
+      const buf = new Float32Array(totalSamples);
+      let pos = 0;
+
+      function writeDTMFChord(chordIdx, duration) {
+        const freqs = getDTMFFreqs(chordIdx);
+        const samples = Math.round(duration * sr);
+        const ramp = Math.min(rampSamples, Math.round(samples * 0.1));
+        for (let i = 0; i < samples && pos + i < buf.length; i++) {
+          const t = i / sr;
+          let sample = (Math.sin(2 * Math.PI * freqs[0] * t) +
+                        Math.sin(2 * Math.PI * freqs[1] * t)) * 0.5 * vol;
+          if (i < ramp) sample *= i / ramp;
+          if (i > samples - ramp) sample *= (samples - i) / ramp;
+          buf[pos + i] = sample;
+        }
+        pos += samples;
+      }
+
+      function writeSilence(duration) {
+        pos += Math.round(duration * sr);
+      }
+
+      for (const pair of pairs) {
+        // First chord: row
+        writeDTMFChord(pair.row, toneDur);
+        writeSilence(intraGap);
+        // Second chord: column
+        writeDTMFChord(pair.col, toneDur);
+        writeSilence(interGap);
+      }
+
+      return buf;
+    }
+
+    // =========================================================================
     // Main encode
     // =========================================================================
     window.encode = function() {
@@ -797,7 +1000,9 @@
       dispBits.innerHTML = `<span class="bits">${bitDisplay}</span>  <span style="color:#666">(${bitStr.length} bits)</span>`;
 
       // Step 3+4+5: Mode-specific encoding
-      if (currentMode === 'morse') {
+      if (currentMode === 'phone') {
+        audioBuffer = encodePhone(text);
+      } else if (currentMode === 'morse') {
         audioBuffer = encodeMorse(text);
       } else {
         const bitsPerSymbol = MODE_INFO[currentMode].bits;
