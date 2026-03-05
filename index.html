@@ -402,7 +402,8 @@
     const kuroshiroInitPromise = (async function initKuroshiro() {
       const statusEl = document.getElementById('kanji-status');
       try {
-        const k = new Kuroshiro();
+        const KuroshiroCls = (typeof Kuroshiro === 'function') ? Kuroshiro : Kuroshiro.default;
+        const k = new KuroshiroCls();
         await k.init(new KuromojiAnalyzer({
           dictPath: 'vendor/dict/'
         }));
