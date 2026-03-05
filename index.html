@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>テキスト→音声変調</title>
+  <script src="https://cdn.jsdelivr.net/npm/kuroshiro@1.2.0/dist/kuroshiro.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/kuroshiro-analyzer-kuromoji@1.1.0/dist/kuroshiro-analyzer-kuromoji.min.js"></script>
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -266,59 +268,6 @@
       .symbol-table, .symbol-table.cols-8 { grid-template-columns: repeat(2, 1fr); }
       .data-display { font-size: 0.65em; }
     }
-
-    /* 変換パネル */
-    .gemini-panel { border-color: #4a2a6a; }
-    .gemini-panel h2 { color: #c084fc; }
-    .gemini-result {
-      background: #0a0a1a;
-      border: 1px solid #4a2a6a;
-      border-radius: 4px;
-      padding: 8px;
-      min-height: 48px;
-      font-size: 0.9em;
-      color: #e0e0e0;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-    .gemini-result.loading { color: #888; font-style: italic; }
-    .gemini-result.error { color: #e63946; }
-    .convert-type-row {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 8px;
-      flex-wrap: wrap;
-    }
-    .convert-type-btn {
-      background: #2a1a3a;
-      color: #c084fc;
-      border: 1px solid #4a2a6a;
-      padding: 5px 12px;
-      font-size: 0.8em;
-    }
-    .convert-type-btn.active {
-      background: #4a2a6a;
-      color: #e0d0ff;
-    }
-    .convert-type-btn:hover { background: #3a1a5a; }
-    .api-key-row {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-    .api-key-row input {
-      flex: 1;
-      background: #0a0a1a;
-      color: #e0e0e0;
-      border: 1px solid #4a2a6a;
-      border-radius: 4px;
-      padding: 5px 8px;
-      font-family: inherit;
-      font-size: 0.8em;
-    }
-    .api-key-row input:focus { outline: none; border-color: #c084fc; }
-    .api-key-note { color: #888; font-size: 0.75em; margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -338,28 +287,6 @@
         <button onclick="loadDefaultCSV()" class="secondary">a.csv を読込</button>
       </div>
       <textarea id="input-text">祇園精舍の鐘の声、諸行無常の響きあり。娑羅双樹の花の色、盛者必衰の理をあらはす。驕れる人も久しからず、ただ春の夜の夢のごとし。猛き者もつひにはほろびぬ、ひとへに風の前の塵に同じ。</textarea>
-    </div>
-
-    <!-- テキスト変換パネル -->
-    <div class="panel gemini-panel">
-      <h2>テキスト変換</h2>
-      <div id="api-key-section" style="display:none;">
-        <p class="api-key-note">Gemini API キーが設定されていません。<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="color:#c084fc;">Google AI Studio</a> でキーを取得して入力してください。</p>
-        <div class="api-key-row">
-          <input type="password" id="gemini-api-key-input" placeholder="Gemini API キーを入力...">
-          <button onclick="saveApiKey()">保存</button>
-        </div>
-      </div>
-      <div class="convert-type-row">
-        <button class="convert-type-btn active" data-ctype="katakana" onclick="setConvertType('katakana')">テキスト → カタカナ</button>
-        <button class="convert-type-btn" data-ctype="romaji" onclick="setConvertType('romaji')">テキスト → ヘボン式ローマ字</button>
-      </div>
-      <div class="btn-row">
-        <button onclick="doConvert()" id="gemini-btn">変換</button>
-        <button class="secondary" onclick="applyConvertResult()" id="gemini-apply-btn" disabled>入力欄に反映</button>
-      </div>
-      <label style="margin-top:8px;">変換結果</label>
-      <div class="gemini-result" id="gemini-result">変換結果がここに表示されます</div>
     </div>
 
     <!-- Modulation Mode -->
@@ -451,6 +378,7 @@
       <h2>再生コントロール</h2>
       <div class="btn-row">
         <button id="btn-encode" onclick="encode()">エンコード</button>
+        <span id="kanji-status" style="font-size:0.75em;color:#888;">漢字変換: 読込中...</span>
         <button id="btn-play" onclick="play()" disabled>再生 ▶</button>
         <button id="btn-stop" onclick="stop()" class="stop" disabled>停止 ■</button>
         <button id="btn-download" onclick="downloadWav()" class="secondary" disabled>WAVダウンロード</button>
@@ -462,6 +390,28 @@
   <script>
   (function() {
     'use strict';
+
+    // =========================================================================
+    // Kuroshiro (漢字→かな変換)
+    // =========================================================================
+    let kuroshiroInst = null;
+    let kuroshiroReady = false;
+
+    (async function initKuroshiro() {
+      const statusEl = document.getElementById('kanji-status');
+      try {
+        const k = new Kuroshiro();
+        await k.init(new KuromojiAnalyzer({
+          dictPath: 'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/'
+        }));
+        kuroshiroInst = k;
+        kuroshiroReady = true;
+        if (statusEl) { statusEl.textContent = '漢字変換: OK'; statusEl.style.color = '#4caf50'; }
+      } catch(e) {
+        console.warn('kuroshiro init failed:', e);
+        if (statusEl) { statusEl.textContent = '漢字変換: エラー（かな入力のみ）'; statusEl.style.color = '#e63946'; }
+      }
+    })();
 
     // =========================================================================
     // Configuration
@@ -486,8 +436,8 @@
       fsk8:  { bits: 8,  symbols: 256,   label: '256-FSK (8bit)',   desc: '256-FSK: 1シンボル=8bit、256段階の周波数。高速だが環境依存。' },
       fsk16: { bits: 16, symbols: 65536, label: '65536-FSK (16bit)', desc: '65536-FSK: 1シンボル=16bit、65536段階の周波数。超高速だが実用性は限定的。' },
       morse: { bits: 0,  symbols: 0,     label: 'モールス信号',      desc: 'モールス信号: 短点(・)と長点(-)で文字を符号化。古典的な通信方式。※英数字(A-Z, 0-9)と一部記号のみ対応。日本語は変換できません。' },
-      morse_kana: { bits: 0, symbols: 0, label: '和文モールス',      desc: '和文モールス信号: 短点(・)と長点(-)でカナ文字を符号化。濁音は清音＋濁点(・・)、半濁音は清音＋半濁点(・・−−・)で表現。' },
-      phone: { bits: 0,  symbols: 16,    label: 'ポケベル式 DTMF',  desc: 'ポケベル式: 4×4 DTMF和音(16種)で50音を符号化。2つの和音で1文字を表現。行(第1和音)+段(第2和音)。' },
+      morse_kana: { bits: 0, symbols: 0, label: '和文モールス',      desc: '和文モールス信号: 短点(・)と長点(-)でカナ文字を符号化。漢字はkuroshiroで自動かな変換。濁音は清音＋濁点(・・)、半濁音は清音＋半濁点(・・−−・)で表現。' },
+      phone: { bits: 0,  symbols: 16,    label: 'ポケベル式 DTMF',  desc: 'ポケベル式: 4×4 DTMF和音(16種)で50音を符号化。漢字はkuroshiroで自動かな変換。2つの和音で1文字を表現。行(第1和音)+段(第2和音)。' },
     };
 
     // =========================================================================
@@ -1279,14 +1229,28 @@
     // =========================================================================
     // Main encode
     // =========================================================================
-    window.encode = function() {
-      const text = inputText.value;
-      if (!text.trim()) { alert('テキストを入力してください'); return; }
+    window.encode = async function() {
+      const rawText = inputText.value;
+      if (!rawText.trim()) { alert('テキストを入力してください'); return; }
+
+      // 漢字モードでは kuroshiro でかな変換
+      let text = rawText;
+      if ((currentMode === 'morse_kana' || currentMode === 'phone') && kuroshiroReady) {
+        const btnEncode = document.getElementById('btn-encode');
+        btnEncode.disabled = true;
+        btnEncode.textContent = '変換中...';
+        try {
+          text = await kuroshiroInst.convert(rawText, { to: 'hiragana' });
+        } finally {
+          btnEncode.disabled = false;
+          btnEncode.textContent = 'エンコード';
+        }
+      }
 
       // Step 1: Text → UTF-8 bytes
       setStep('utf8');
       const encoder = new TextEncoder();
-      const utf8Bytes = encoder.encode(text);
+      const utf8Bytes = encoder.encode(rawText);
       const hexStr = Array.from(utf8Bytes).map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
       dispHex.innerHTML = `<span class="hex">${hexStr}</span>  <span style="color:#666">(${utf8Bytes.length} bytes)</span>`;
 
@@ -1303,7 +1267,7 @@
       if (currentMode === 'phone') {
         audioBuffer = encodePhone(text);
       } else if (currentMode === 'morse') {
-        audioBuffer = encodeMorse(text);
+        audioBuffer = encodeMorse(rawText);
       } else if (currentMode === 'morse_kana') {
         audioBuffer = encodeKanaMorse(text);
       } else {
@@ -1503,103 +1467,6 @@
     }
 
   })();
-
-  // ─── テキスト変換（Gemini API） ────────────────────────────────
-  const GEMINI_API_KEY_INJECTED = '__GEMINI_API_KEY__';
-  // Split to prevent the CI sed command from replacing this reference value
-  const GEMINI_KEY_PLACEHOLDER = '__GEMINI' + '_API_KEY__';
-
-  function getGeminiApiKey() {
-    if (GEMINI_API_KEY_INJECTED !== GEMINI_KEY_PLACEHOLDER) return GEMINI_API_KEY_INJECTED;
-    return localStorage.getItem('gemini_api_key') || '';
-  }
-
-  function saveApiKey() {
-    const key = document.getElementById('gemini-api-key-input').value.trim();
-    if (!key) return;
-    localStorage.setItem('gemini_api_key', key);
-    document.getElementById('api-key-section').style.display = 'none';
-    document.getElementById('gemini-result').textContent = '変換結果がここに表示されます';
-  }
-
-  (function initApiKeySection() {
-    if (GEMINI_API_KEY_INJECTED === GEMINI_KEY_PLACEHOLDER && !localStorage.getItem('gemini_api_key')) {
-      document.getElementById('api-key-section').style.display = '';
-    }
-  })();
-
-  let currentConvertType = 'katakana';
-  let lastConvertResult = '';
-
-  function setConvertType(type) {
-    currentConvertType = type;
-    document.querySelectorAll('.convert-type-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.ctype === type);
-    });
-    document.getElementById('gemini-result').textContent = '変換結果がここに表示されます';
-    document.getElementById('gemini-apply-btn').disabled = true;
-    lastConvertResult = '';
-  }
-
-  async function doConvert() {
-    const text = document.getElementById('input-text').value.trim();
-    if (!text) return;
-
-    const btn = document.getElementById('gemini-btn');
-    const resultEl = document.getElementById('gemini-result');
-    const applyBtn = document.getElementById('gemini-apply-btn');
-
-    btn.disabled = true;
-    resultEl.className = 'gemini-result loading';
-    resultEl.textContent = '変換中...';
-    applyBtn.disabled = true;
-    lastConvertResult = '';
-
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) {
-      resultEl.className = 'gemini-result error';
-      resultEl.textContent = 'エラー: Gemini API キーが設定されていません。上のフォームにキーを入力してください。';
-      btn.disabled = false;
-      document.getElementById('api-key-section').style.display = '';
-      return;
-    }
-
-    const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey;
-    const prompt = currentConvertType === 'katakana'
-      ? `以下の日本語テキストをすべてカタカナ読みに変換してください。変換結果のみを返し、説明や改行は不要です。\n\n${text}`
-      : `以下の日本語テキストをすべてヘボン式ローマ字に変換してください。変換結果のみを返し、説明や改行は不要です。\n\n${text}`;
-
-    try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => null);
-        const msg = errData?.error?.message ?? res.statusText;
-        throw new Error(`APIエラー ${res.status}: ${msg}`);
-      }
-      const data = await res.json();
-      const result = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
-      if (!result) throw new Error('変換結果が空です');
-      resultEl.className = 'gemini-result';
-      resultEl.textContent = result;
-      lastConvertResult = result;
-      applyBtn.disabled = false;
-    } catch (err) {
-      resultEl.className = 'gemini-result error';
-      resultEl.textContent = 'エラー: ' + err.message;
-    } finally {
-      btn.disabled = false;
-    }
-  }
-
-  function applyConvertResult() {
-    if (lastConvertResult) {
-      document.getElementById('input-text').value = lastConvertResult;
-    }
-  }
   </script>
 </body>
 </html>
