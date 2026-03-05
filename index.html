@@ -1486,12 +1486,19 @@
   let kuroshiro = null;
 
   (async () => {
+    await new Promise(r => {
+      if (document.readyState !== 'loading') r();
+      else document.addEventListener('DOMContentLoaded', r);
+    });
     const btn = document.getElementById('gemini-btn');
     const resultEl = document.getElementById('gemini-result');
+    if (!btn || !resultEl) return;
     btn.disabled = true;
     resultEl.className = 'gemini-result loading';
     resultEl.textContent = '辞書を読み込み中...';
     try {
+      if (typeof Kuroshiro === 'undefined') throw new Error('Kuroshiro が読み込まれていません');
+      if (typeof KuromojiAnalyzer === 'undefined') throw new Error('KuromojiAnalyzer が読み込まれていません');
       kuroshiro = new Kuroshiro();
       await kuroshiro.init(new KuromojiAnalyzer({ dictPath: 'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict' }));
       resultEl.className = 'gemini-result';
@@ -1499,7 +1506,7 @@
       btn.disabled = false;
     } catch (err) {
       resultEl.className = 'gemini-result error';
-      resultEl.textContent = '辞書の読み込みに失敗しました: ' + err.message;
+      resultEl.textContent = '読み込みエラー: ' + (err.message || String(err));
     }
   })();
 
@@ -1514,6 +1521,11 @@
   }
 
   async function doConvert() {
+    if (!kuroshiro) {
+      document.getElementById('gemini-result').className = 'gemini-result error';
+      document.getElementById('gemini-result').textContent = '辞書の読み込みが完了していません。しばらく待ってください。';
+      return;
+    }
     const text = document.getElementById('input-text').value.trim();
     if (!text) return;
 
