@@ -482,7 +482,6 @@
       // kuroshiro 初期化待機（必要な場合）
       if (!kuroshiroReady && !kuroshiroFailed) {
         btn.disabled = true;
-        btn.textContent = '読込中...';
         const timeout = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('timeout')), 15000)
         );
@@ -496,7 +495,6 @@
       }
 
       btn.disabled = true;
-      btn.textContent = '変換中...';
 
       try {
         if (_cycleState === 'original') {
@@ -522,15 +520,11 @@
           ta.value = _originalText;
           _originalText = null;
           _cycleState = 'original';
-          btn.textContent = '文字の変換';
         }
       } catch(e) {
         alert('変換に失敗しました: ' + e.message);
       } finally {
         btn.disabled = false;
-        if (_cycleState === 'original' && btn.textContent === '変換中...') {
-          btn.textContent = '文字の変換';
-        }
       }
     }
     window.cycleKanaRomaji = cycleKanaRomaji;
@@ -564,13 +558,20 @@
     let currentMode = 'fsk4';
 
     const MODE_INFO = {
-      fsk2:  { bits: 2,  symbols: 4,     label: '4-FSK (2bit)',     desc: '4-FSK: 1シンボル=2bit、4段階の周波数。超安定だが遅い。' },
-      fsk4:  { bits: 4,  symbols: 16,    label: '16-FSK (4bit)',    desc: '16-FSK: 1シンボル=4bit、16段階の周波数。安定性と速度のバランス良し。' },
-      fsk8:  { bits: 8,  symbols: 256,   label: '256-FSK (8bit)',   desc: '256-FSK: 1シンボル=8bit、256段階の周波数。高速だが環境依存。' },
-      fsk16: { bits: 16, symbols: 65536, label: '65536-FSK (16bit)', desc: '65536-FSK: 1シンボル=16bit、65536段階の周波数。超高速だが実用性は限定的。' },
-      morse: { bits: 0,  symbols: 0,     label: 'モールス信号',      desc: 'モールス信号: 短点(・)と長点(-)で文字を符号化。古典的な通信方式。※英数字(A-Z, 0-9)と一部記号のみ対応。日本語は変換できません。' },
-      morse_kana: { bits: 0, symbols: 0, label: '和文モールス',      desc: '和文モールス信号: 短点(・)と長点(-)でカナ文字を符号化。漢字はkuroshiroで自動かな変換。濁音は清音＋濁点(・・)、半濁音は清音＋半濁点(・・−−・)で表現。数字0-9は国際モールス符号で対応。' },
-      phone: { bits: 0,  symbols: 16,    label: 'ポケベル式 DTMF',  desc: 'ポケベル式: 4×4 DTMF和音(16種)でかな・英字・数字を符号化。漢字はkuroshiroで自動かな変換。2つの和音で1文字を表現。行(第1和音)+段(第2和音)。英字A-Z・数字0-9にも対応。' },
+      fsk2:  { bits: 2,  symbols: 4,     label: '4-FSK (2bit)',     desc: '4-FSK: 1シンボル=2bit、4段階の周波数。超安定だが遅い。',
+               recommended: { baseFreq: 800, freqStep: 300, symbolDur: 100 } },
+      fsk4:  { bits: 4,  symbols: 16,    label: '16-FSK (4bit)',    desc: '16-FSK: 1シンボル=4bit、16段階の周波数。安定性と速度のバランス良し。',
+               recommended: { baseFreq: 800, freqStep: 150, symbolDur: 50 } },
+      fsk8:  { bits: 8,  symbols: 256,   label: '256-FSK (8bit)',   desc: '256-FSK: 1シンボル=8bit、256段階の周波数。高速だが環境依存。',
+               recommended: { baseFreq: 200, freqStep: 50,  symbolDur: 30 } },
+      fsk16: { bits: 16, symbols: 65536, label: '65536-FSK (16bit)', desc: '65536-FSK: 1シンボル=16bit、65536段階の周波数。超高速だが実用性は限定的。',
+               recommended: { baseFreq: 200, freqStep: 50,  symbolDur: 20 } },
+      morse: { bits: 0,  symbols: 0,     label: 'モールス信号',      desc: 'モールス信号: 短点(・)と長点(-)で文字を符号化。古典的な通信方式。※英数字(A-Z, 0-9)と一部記号のみ対応。日本語は変換できません。',
+               recommended: { baseFreq: 800, freqStep: 150, symbolDur: 80 } },
+      morse_kana: { bits: 0, symbols: 0, label: '和文モールス',      desc: '和文モールス信号: 短点(・)と長点(-)でカナ文字を符号化。漢字はkuroshiroで自動かな変換。濁音は清音＋濁点(・・)、半濁音は清音＋半濁点(・・−−・)で表現。数字0-9は国際モールス符号で対応。',
+               recommended: { baseFreq: 800, freqStep: 150, symbolDur: 80 } },
+      phone: { bits: 0,  symbols: 16,    label: 'ポケベル式 DTMF',  desc: 'ポケベル式: 4×4 DTMF和音(16種)でかな・英字・数字を符号化。漢字はkuroshiroで自動かな変換。2つの和音で1文字を表現。行(第1和音)+段(第2和音)。英字A-Z・数字0-9にも対応。',
+               recommended: { baseFreq: 800, freqStep: 150, symbolDur: 80 } },
     };
 
     // =========================================================================
@@ -796,6 +797,14 @@
     // =========================================================================
     // Mode selector
     // =========================================================================
+    function applyRecommendedSettings(mode) {
+      const rec = MODE_INFO[mode].recommended;
+      if (!rec) return;
+      document.getElementById('set-base-freq').value = rec.baseFreq;
+      document.getElementById('set-freq-step').value = rec.freqStep;
+      document.getElementById('set-symbol-dur').value = rec.symbolDur;
+    }
+
     document.getElementById('mode-selector').addEventListener('click', function(e) {
       const btn = e.target.closest('.mode-btn');
       if (!btn) return;
@@ -806,6 +815,7 @@
       const info = MODE_INFO[mode];
       modeDesc.textContent = info.desc;
       subtitle.textContent = info.label + ' テキスト音声変調器';
+      applyRecommendedSettings(mode);
       updateSymbolTable();
     });
 
