@@ -4,8 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>binary</title>
-  <script src="vendor/kuroshiro.min.js"></script>
-  <script src="vendor/kuroshiro-analyzer-kuromoji.min.js"></script>
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -278,7 +276,7 @@
 
     <!-- Input Panel -->
     <div class="panel">
-      <h2>入力テキスト <span id="loading-msg" style="font-size:0.6em; color:#00e5ff; font-weight:normal;">読み込み中・・・</span></h2>
+      <h2>入力テキスト</h2>
       <div class="btn-row" style="margin-bottom:8px;">
         <button id="btn-cycle-kana" onclick="cycleKanaRomaji()" class="secondary">文字の変換</button>
         <button id="btn-reset-text" onclick="resetText()" class="secondary">リセット</button>
@@ -384,142 +382,47 @@
     'use strict';
 
     // =========================================================================
-    // Kuroshiro (漢字→かな変換)
+    // Gemini API (漢字→かな変換)
     // =========================================================================
-    let kuroshiroInst = null;
-    let kuroshiroReady = false;
-    let kuroshiroFailed = false;
+    const GEMINI_API_KEY = '__GEMINI_API_KEY__';
 
-    const kuroshiroInitPromise = (async function initKuroshiro() {
-      try {
-        const KuroshiroCls = (typeof Kuroshiro === 'function') ? Kuroshiro : Kuroshiro.default;
-        const k = new KuroshiroCls();
-        await k.init(new KuromojiAnalyzer({
-          dictPath: 'vendor/dict/'
-        }));
-        kuroshiroInst = k;
-        kuroshiroReady = true;
-      } catch(e) {
-        kuroshiroFailed = true;
-        console.warn('kuroshiro init failed:', e);
-      } finally {
-        const loadingMsg = document.getElementById('loading-msg');
-        if (loadingMsg) loadingMsg.style.display = 'none';
-      }
-    })();
-
-    // =========================================================================
-    // カナ→ローマ字変換（フォールバック用静的テーブル・ヘボン式）
-    // =========================================================================
-    const KANA_ROMAJI_TABLE = {
-      'あ':'a','い':'i','う':'u','え':'e','お':'o',
-      'か':'ka','き':'ki','く':'ku','け':'ke','こ':'ko',
-      'さ':'sa','し':'shi','す':'su','せ':'se','そ':'so',
-      'た':'ta','ち':'chi','つ':'tsu','て':'te','と':'to',
-      'な':'na','に':'ni','ぬ':'nu','ね':'ne','の':'no',
-      'は':'ha','ひ':'hi','ふ':'fu','へ':'he','ほ':'ho',
-      'ま':'ma','み':'mi','む':'mu','め':'me','も':'mo',
-      'や':'ya','ゆ':'yu','よ':'yo',
-      'ら':'ra','り':'ri','る':'ru','れ':'re','ろ':'ro',
-      'わ':'wa','ゐ':'i','ゑ':'e','を':'o','ん':'n',
-      'が':'ga','ぎ':'gi','ぐ':'gu','げ':'ge','ご':'go',
-      'ざ':'za','じ':'ji','ず':'zu','ぜ':'ze','ぞ':'zo',
-      'だ':'da','ぢ':'ji','づ':'zu','で':'de','ど':'do',
-      'ば':'ba','び':'bi','ぶ':'bu','べ':'be','ぼ':'bo',
-      'ぱ':'pa','ぴ':'pi','ぷ':'pu','ぺ':'pe','ぽ':'po',
-      'きゃ':'kya','きゅ':'kyu','きょ':'kyo',
-      'しゃ':'sha','しゅ':'shu','しょ':'sho',
-      'ちゃ':'cha','ちゅ':'chu','ちょ':'cho',
-      'にゃ':'nya','にゅ':'nyu','にょ':'nyo',
-      'ひゃ':'hya','ひゅ':'hyu','ひょ':'hyo',
-      'みゃ':'mya','みゅ':'myu','みょ':'myo',
-      'りゃ':'rya','りゅ':'ryu','りょ':'ryo',
-      'ぎゃ':'gya','ぎゅ':'gyu','ぎょ':'gyo',
-      'じゃ':'ja','じゅ':'ju','じょ':'jo',
-      'びゃ':'bya','びゅ':'byu','びょ':'byo',
-      'ぴゃ':'pya','ぴゅ':'pyu','ぴょ':'pyo',
-      'っ':'tt',
-      'ー':'-','、':',','。':'.','「':'"','」':'"','・':' ',
-    };
-
-    function kanaToRomajiSimple(text) {
-      // カタカナ→ひらがな
-      text = text.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
-      let result = '';
-      let i = 0;
-      while (i < text.length) {
-        // 2文字組み合わせを先に試す（きゃ等）
-        const two = text.slice(i, i + 2);
-        if (two.length === 2 && KANA_ROMAJI_TABLE[two]) {
-          result += KANA_ROMAJI_TABLE[two] + ' ';
-          i += 2;
-          continue;
+    async function convertWithGemini(text, to) {
+      const prompts = {
+        hiragana: `次の日本語テキストをすべてひらがなに変換して。変換結果のテキストのみ返して:\n${text}`,
+        romaji:   `次の日本語テキストをヘボン式ローマ字に変換して。単語間はスペースで区切り、変換結果のみ返して:\n${text}`,
+        katakana: `次の日本語テキストをすべてカタカナに変換して。変換結果のテキストのみ返して:\n${text}`,
+      };
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompts[to] }] }] }),
         }
-        const one = text[i];
-        if (KANA_ROMAJI_TABLE[one]) {
-          // っ は次の子音を重ねる
-          if (one === 'っ') {
-            const next = text.slice(i + 1, i + 3);
-            const nextTwo = KANA_ROMAJI_TABLE[next] || KANA_ROMAJI_TABLE[text[i + 1]];
-            if (nextTwo) { result += nextTwo[0]; }
-            else { result += 'tt'; }
-          } else {
-            result += KANA_ROMAJI_TABLE[one] + ' ';
-          }
-        } else {
-          result += one;
-        }
-        i++;
-      }
-      return result.trim();
+      );
+      if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
+      const data = await res.json();
+      return data.candidates[0].content.parts[0].text.trim();
     }
 
-    // サイクル状態: 'original' → 'romaji' → 'katakana' → 'original' → ...
+    // サイクル状態: 'original' → 'katakana' → 'romaji' → 'original' → ...
     let _cycleState = 'original';
     let _originalText = null;
 
     async function cycleKanaRomaji() {
       const ta = document.getElementById('input-text');
       const btn = document.getElementById('btn-cycle-kana');
-
-      // kuroshiro 初期化待機（必要な場合）
-      if (!kuroshiroReady && !kuroshiroFailed) {
-        btn.disabled = true;
-        const timeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), 15000)
-        );
-        try {
-          await Promise.race([kuroshiroInitPromise, timeout]);
-        } catch(e) {
-          // タイムアウト → フォールバックで続行
-        } finally {
-          btn.disabled = false;
-        }
-      }
-
       btn.disabled = true;
 
       try {
         if (_cycleState === 'original') {
-          // 元文 → ローマ字
           _originalText = ta.value;
-          if (kuroshiroReady) {
-            ta.value = await kuroshiroInst.convert(ta.value, { to: 'romaji', mode: 'spaced', romajiSystem: 'hepburn' });
-          } else {
-            ta.value = kanaToRomajiSimple(ta.value);
-          }
-          _cycleState = 'romaji';
-        } else if (_cycleState === 'romaji') {
-          // ローマ字 → カタカナ（元文から再変換）
-          if (kuroshiroReady) {
-            ta.value = await kuroshiroInst.convert(_originalText, { to: 'katakana', mode: 'normal' });
-          } else {
-            alert('カタカナ変換にはkuroshiro辞書が必要です。');
-            return;
-          }
+          ta.value = await convertWithGemini(ta.value, 'katakana');
           _cycleState = 'katakana';
+        } else if (_cycleState === 'katakana') {
+          ta.value = await convertWithGemini(_originalText, 'romaji');
+          _cycleState = 'romaji';
         } else {
-          // カタカナ → 元文
           ta.value = _originalText;
           _originalText = null;
           _cycleState = 'original';
@@ -1416,14 +1319,14 @@
       const rawText = inputText.value;
       if (!rawText.trim()) { alert('テキストを入力してください'); return; }
 
-      // 漢字モードでは kuroshiro でかな変換
+      // 漢字モードでは Gemini でかな変換
       let text = rawText;
-      if ((currentMode === 'morse_kana' || currentMode === 'phone') && kuroshiroReady) {
+      if (currentMode === 'morse_kana' || currentMode === 'phone') {
         const btnEncode = document.getElementById('btn-encode');
         btnEncode.disabled = true;
         btnEncode.textContent = '変換中...';
         try {
-          text = await kuroshiroInst.convert(rawText, { to: 'hiragana' });
+          text = await convertWithGemini(rawText, 'hiragana');
         } finally {
           btnEncode.disabled = false;
           btnEncode.textContent = 'エンコード';
