@@ -408,29 +408,38 @@
     // サイクル状態: 'original' → 'katakana' → 'romaji' → 'original' → ...
     let _cycleState = 'original';
     let _originalText = null;
+    let _katakanaText = null;
+    let _romajiText = null;
 
     async function cycleKanaRomaji() {
       const ta = document.getElementById('input-text');
       const btn = document.getElementById('btn-cycle-kana');
-      btn.disabled = true;
 
-      try {
-        if (_cycleState === 'original') {
-          _originalText = ta.value;
-          ta.value = await convertWithGemini(ta.value, 'katakana');
-          _cycleState = 'katakana';
-        } else if (_cycleState === 'katakana') {
-          ta.value = await convertWithGemini(_originalText, 'romaji');
-          _cycleState = 'romaji';
-        } else {
-          ta.value = _originalText;
-          _originalText = null;
-          _cycleState = 'original';
+      if (_cycleState === 'original') {
+        _originalText = ta.value;
+        btn.disabled = true;
+        try {
+          [_katakanaText, _romajiText] = await Promise.all([
+            convertWithGemini(_originalText, 'katakana'),
+            convertWithGemini(_originalText, 'romaji'),
+          ]);
+        } catch(e) {
+          alert('変換に失敗しました: ' + e.message);
+          btn.disabled = false;
+          return;
         }
-      } catch(e) {
-        alert('変換に失敗しました: ' + e.message);
-      } finally {
         btn.disabled = false;
+        ta.value = _katakanaText;
+        _cycleState = 'katakana';
+      } else if (_cycleState === 'katakana') {
+        ta.value = _romajiText;
+        _cycleState = 'romaji';
+      } else {
+        ta.value = _originalText;
+        _originalText = null;
+        _katakanaText = null;
+        _romajiText = null;
+        _cycleState = 'original';
       }
     }
     window.cycleKanaRomaji = cycleKanaRomaji;
