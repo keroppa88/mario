@@ -280,6 +280,7 @@
       <div class="btn-row" style="margin-bottom:8px;">
         <button id="btn-cycle-kana" onclick="cycleKanaRomaji()" class="secondary">文字の変換</button>
         <button id="btn-reset-text" onclick="resetText()" class="secondary">リセット</button>
+        <span id="convert-status" style="font-size:0.8em; color:#00e5ff; display:none; align-self:center;">変換中・・・</span>
       </div>
       <textarea id="input-text">ゆく河の流れは絶えずして、しかももとの水にあらず。よどみに浮ぶうたかたは、かつ消えかつ結びて、久しくとどまりたるためしなし。世の中にある人とすみかと、又かくのごとし。</textarea>
     </div>
@@ -408,29 +409,79 @@
     // サイクル状態: 'original' → 'katakana' → 'romaji' → 'original' → ...
     let _cycleState = 'original';
     let _originalText = null;
+    let _katakanaText = null;
+    let _romajiText = null;
+    let _prefetchPromise = null;
+    let _prefetchedFor = null;
+    let _debounceTimer = null;
+
+    function setStatus(visible) {
+      const el = document.getElementById('convert-status');
+      if (el) el.style.display = visible ? 'inline' : 'none';
+    }
+
+    function prefetch(text) {
+      if (!text.trim() || text === _prefetchedFor) return;
+      _prefetchedFor = text;
+      _katakanaText = null;
+      _romajiText = null;
+      setStatus(true);
+      _prefetchPromise = Promise.all([
+        convertWithGemini(text, 'katakana'),
+        convertWithGemini(text, 'romaji'),
+      ]).then(([k, r]) => {
+        if (_prefetchedFor === text) {
+          _katakanaText = k;
+          _romajiText = r;
+        }
+      }).catch(() => {}).finally(() => setStatus(false));
+    }
+
+    // テキスト変更時にデバウンスで先読み
+    document.addEventListener('DOMContentLoaded', () => {
+      const ta = document.getElementById('input-text');
+      ta.addEventListener('input', () => {
+        _cycleState = 'original';
+        _originalText = null;
+        clearTimeout(_debounceTimer);
+        _debounceTimer = setTimeout(() => prefetch(ta.value), 800);
+      });
+      // 初期テキストを先読み
+      prefetch(ta.value);
+    });
 
     async function cycleKanaRomaji() {
       const ta = document.getElementById('input-text');
       const btn = document.getElementById('btn-cycle-kana');
-      btn.disabled = true;
 
-      try {
-        if (_cycleState === 'original') {
-          _originalText = ta.value;
-          ta.value = await convertWithGemini(ta.value, 'katakana');
-          _cycleState = 'katakana';
-        } else if (_cycleState === 'katakana') {
-          ta.value = await convertWithGemini(_originalText, 'romaji');
-          _cycleState = 'romaji';
-        } else {
-          ta.value = _originalText;
-          _originalText = null;
-          _cycleState = 'original';
+      if (_cycleState === 'original') {
+        _originalText = ta.value;
+        if (!_katakanaText || !_romajiText) {
+          btn.disabled = true;
+          setStatus(true);
+          try {
+            await (_prefetchPromise || Promise.all([
+              convertWithGemini(_originalText, 'katakana'),
+              convertWithGemini(_originalText, 'romaji'),
+            ]).then(([k, r]) => { _katakanaText = k; _romajiText = r; }));
+          } catch(e) {
+            alert('変換に失敗しました: ' + e.message);
+            btn.disabled = false;
+            setStatus(false);
+            return;
+          }
+          btn.disabled = false;
+          setStatus(false);
         }
-      } catch(e) {
-        alert('変換に失敗しました: ' + e.message);
-      } finally {
-        btn.disabled = false;
+        ta.value = _katakanaText;
+        _cycleState = 'katakana';
+      } else if (_cycleState === 'katakana') {
+        ta.value = _romajiText;
+        _cycleState = 'romaji';
+      } else {
+        ta.value = _originalText;
+        _originalText = null;
+        _cycleState = 'original';
       }
     }
     window.cycleKanaRomaji = cycleKanaRomaji;
@@ -439,6 +490,9 @@
       const ta = document.getElementById('input-text');
       ta.value = '';
       _originalText = null;
+      _katakanaText = null;
+      _romajiText = null;
+      _prefetchedFor = null;
       _cycleState = 'original';
       const btn = document.getElementById('btn-cycle-kana');
       btn.textContent = '文字の変換';
